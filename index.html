@@ -47,7 +47,7 @@
         <h1 class="text-5xl font-bold text-yellow-400 mb-8">⚔️ 궤도 무기 난투 ⚔️</h1>
         <p class="mb-4 text-gray-300 text-center">적을 처치하고 데미지를 키워 <strong class="text-purple-400">환골탈태</strong> 하세요!<br>강해질수록 무기가 커지고 묵직해집니다.</p>
         <input type="text" id="player-name" placeholder="닉네임 입력 (예: 홍길동)" class="px-4 py-3 rounded text-black text-lg w-64 mb-4 text-center focus:outline-none focus:ring-4 focus:ring-yellow-500" maxlength="8">
-        <button id="join-btn" class="px-8 py-3 bg-blue-600 hover:bg-blue-500 rounded text-xl font-bold transition-colors">게임 시작</button>
+        <button id="join-btn" class="px-8 py-3 bg-gray-500 text-white rounded text-xl font-bold transition-colors cursor-not-allowed" disabled>서버 접속 중...</button>
     </div>
 
     <div id="death-screen">
@@ -65,12 +65,12 @@
         // 🔥 선생님의 Firebase 설정값으로 아래 내용을 덮어쓰세요! 🔥
         // =====================================================================
         let firebaseConfig = {
-            apiKey: "AIzaSyA0sbjPjdUReOwWdCRGBjKdQ--YmHBF1g8",
-            authDomain: "orbit-game-class.firebaseapp.com",
-            projectId: "orbit-game-class",
-            storageBucket: "orbit-game-class.firebasestorage.app",
-            messagingSenderId: "47770827555",
-            appId: "1:47770827555:web:c122c3b23587257ed9aa96"
+            apiKey: "여기에_선생님의_API_KEY_입력",
+            authDomain: "여기에_선생님의_AUTH_DOMAIN_입력",
+            projectId: "여기에_선생님의_PROJECT_ID_입력",
+            storageBucket: "여기에_선생님의_STORAGE_BUCKET_입력",
+            messagingSenderId: "여기에_선생님의_SENDER_ID_입력",
+            appId: "여기에_선생님의_APP_ID_입력"
         };
         let gameRoomId = "my-school-class-room-1";
         // =====================================================================
@@ -250,48 +250,62 @@
                 }
             } catch (error) {
                 console.error("Firebase Login Error:", error);
-                alert("게임 서버에 접속할 수 없습니다.");
+                const joinBtn = document.getElementById('join-btn');
+                joinBtn.innerText = "서버 접속 실패 (설정 확인)";
+                alert("게임 서버에 접속할 수 없습니다.\n독립 실행 시 Firebase 설정값을 정확히 입력했는지 확인하세요.");
             }
         }
 
         onAuthStateChanged(auth, (user) => {
             if (user) {
                 myUid = user.uid;
-                document.getElementById('join-btn').addEventListener('click', joinGame);
-                document.getElementById('player-name').addEventListener('keyup', (e) => {
-                    if (e.key === 'Enter') joinGame();
-                });
+                const joinBtn = document.getElementById('join-btn');
+                joinBtn.innerText = "게임 시작";
+                joinBtn.className = "px-8 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded text-xl font-bold transition-colors cursor-pointer";
+                joinBtn.disabled = false;
+                joinBtn.onclick = joinGame;
+
+                document.getElementById('player-name').onkeyup = (e) => {
+                    if (e.key === 'Enter' && !joinBtn.disabled) joinGame();
+                };
             }
         });
         initAuth();
 
         async function joinGame() {
+            if (!myUid) return;
             initAudio(); 
-            const nameInput = document.getElementById('player-name').value.trim();
-            const name = nameInput || "학생" + Math.floor(Math.random() * 100);
-            const randomWeapon = WEAPONS[Math.floor(Math.random() * WEAPONS.length)];
-            const randomColor = COLORS[Math.floor(Math.random() * COLORS.length)];
-
-            me = {
-                uid: myUid, name: name,
-                x: Math.random() * (MAP_SIZE - 200) + 100, y: Math.random() * (MAP_SIZE - 200) + 100,
-                vx: 0, vy: 0, 
-                hp: BASE_HP, maxHp: BASE_HP,
-                weapon: { icon: randomWeapon.icon, name: randomWeapon.name, damage: BASE_DAMAGE, angle: 0, count: 1 },
-                evolution: 0, // 환골탈태 레벨
-                color: randomColor, score: 0, items: [], status: 'alive',
-                invincibleUntil: Date.now() + 2000, killedBy: null, lostDamage: 0, deathId: null,
-                joinedAt: Date.now(), lastActive: Date.now(), isNpc: false
-            };
-
-            await setDoc(doc(playersRef, myUid), me);
             
-            document.getElementById('login-screen').style.display = 'none';
-            setupNetworkListeners();
-            setupInput();
-            requestAnimationFrame(gameLoop);
-            
-            setInterval(syncToServer, 100);
+            try {
+                const nameInput = document.getElementById('player-name').value.trim();
+                const name = nameInput || "학생" + Math.floor(Math.random() * 100);
+                const randomWeapon = WEAPONS[Math.floor(Math.random() * WEAPONS.length)];
+                const randomColor = COLORS[Math.floor(Math.random() * COLORS.length)];
+
+                me = {
+                    uid: myUid, name: name,
+                    x: Math.random() * (MAP_SIZE - 200) + 100, y: Math.random() * (MAP_SIZE - 200) + 100,
+                    vx: 0, vy: 0, 
+                    hp: BASE_HP, maxHp: BASE_HP,
+                    weapon: { icon: randomWeapon.icon, name: randomWeapon.name, damage: BASE_DAMAGE, angle: 0, count: 1 },
+                    evolution: 0, // 환골탈태 레벨
+                    color: randomColor, score: 0, items: [], status: 'alive',
+                    invincibleUntil: Date.now() + 2000, killedBy: null, lostDamage: 0, deathId: null,
+                    joinedAt: Date.now(), lastActive: Date.now(), isNpc: false
+                };
+
+                await setDoc(doc(playersRef, myUid), me);
+                
+                document.getElementById('login-screen').style.display = 'none';
+                setupNetworkListeners();
+                setupInput();
+                requestAnimationFrame(gameLoop);
+                
+                setInterval(syncToServer, 100);
+            } catch (e) {
+                console.error("Join Game Error:", e);
+                alert("게임 시작 중 오류가 발생했습니다: " + e.message);
+            }
         }
 
         // ==============================================================
