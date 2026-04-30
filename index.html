@@ -45,7 +45,7 @@
 
     <div id="login-screen">
         <h1 class="text-5xl font-bold text-yellow-400 mb-8">⚔️ 궤도 무기 난투 ⚔️</h1>
-        <p class="mb-4 text-gray-300 text-center">방향키로 이동, 1~5번 키로 아이템을 사용하세요.<br>시간이 지날수록 봇 군단이 몰려옵니다! 생존하세요!</p>
+        <p class="mb-4 text-gray-300 text-center">적을 처치하고 데미지를 키워 <strong class="text-purple-400">환골탈태</strong> 하세요!<br>강해질수록 무기가 커지고 묵직해집니다.</p>
         <input type="text" id="player-name" placeholder="닉네임 입력 (예: 홍길동)" class="px-4 py-3 rounded text-black text-lg w-64 mb-4 text-center focus:outline-none focus:ring-4 focus:ring-yellow-500" maxlength="8">
         <button id="join-btn" class="px-8 py-3 bg-blue-600 hover:bg-blue-500 rounded text-xl font-bold transition-colors">게임 시작</button>
     </div>
@@ -65,17 +65,16 @@
         // 🔥 선생님의 Firebase 설정값으로 아래 내용을 덮어쓰세요! 🔥
         // =====================================================================
         let firebaseConfig = {
-            apiKey: "AIzaSyA0sbjPjdUReOwWdCRGBjKdQ--YmHBF1g8",
-            authDomain: "orbit-game-class.firebaseapp.com",
-            projectId: "orbit-game-class",
-            storageBucket: "orbit-game-class.firebasestorage.app",
-            messagingSenderId: "47770827555",
-            appId: "1:47770827555:web:c122c3b23587257ed9aa96"
+            apiKey: "여기에_선생님의_API_KEY_입력",
+            authDomain: "여기에_선생님의_AUTH_DOMAIN_입력",
+            projectId: "여기에_선생님의_PROJECT_ID_입력",
+            storageBucket: "여기에_선생님의_STORAGE_BUCKET_입력",
+            messagingSenderId: "여기에_선생님의_SENDER_ID_입력",
+            appId: "여기에_선생님의_APP_ID_입력"
         };
         let gameRoomId = "my-school-class-room-1";
         // =====================================================================
 
-        // 미리보기 호환을 위한 임시 코드
         if (typeof __firebase_config !== 'undefined') firebaseConfig = JSON.parse(__firebase_config);
         if (typeof __app_id !== 'undefined') gameRoomId = __app_id;
 
@@ -96,10 +95,20 @@
         const BASE_HP = 30;
         const BASE_DAMAGE = 5;
         const MAX_WEAPONS = 12; 
+        
+        // 0단계 기본 무기
         const WEAPONS = [
             { icon: '🍙', name: '김밥' }, { icon: '☕', name: '커피' }, { icon: '🍎', name: '사과' },
             { icon: '🍔', name: '햄버거' }, { icon: '✏️', name: '연필' }, { icon: '👟', name: '실내화' }
         ];
+
+        // 🌟 환골탈태 진화 무기 목록 🌟
+        const EVOLUTION_TIERS = {
+            1: [ {icon: '🪓', name: '도끼'}, {icon: '🏹', name: '활'}, {icon: '🗡️', name: '단검'} ],
+            2: [ {icon: '⚔️', name: '쌍검'}, {icon: '💣', name: '폭탄'}, {icon: '⚙️', name: '톱니바퀴'} ],
+            3: [ {icon: '⚡', name: '뇌전'}, {icon: '🔥', name: '지옥불'}, {icon: '🌠', name: '운석'} ]
+        };
+
         const COLORS = ['#F56565', '#ED8936', '#ECC94B', '#48BB78', '#38B2AC', '#4299E1', '#9F7AEA', '#ED64A6'];
         
         const ITEM_TYPES = [
@@ -118,7 +127,7 @@
 
         let weaponClashCooldowns = {};
         let npcRespawnTimers = {}; 
-        let npcUnarmedTimers = {}; // 봇 무기 없음 타이머
+        let npcUnarmedTimers = {}; 
 
         const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
         let camera = { x: 0, y: 0 };
@@ -211,6 +220,20 @@
                     osc.connect(gain); gain.connect(audioCtx.destination);
                     osc.start(); osc.stop(audioCtx.currentTime + 0.3);
                 } catch(e) {}
+            },
+            evo: () => { // ✨ 환골탈태 사운드 ✨
+                try {
+                    if(!audioCtx || audioCtx.state !== 'running') return;
+                    const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+                    osc.frequency.linearRampToValueAtTime(880, audioCtx.currentTime + 0.2);
+                    osc.frequency.linearRampToValueAtTime(1760, audioCtx.currentTime + 0.5);
+                    gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                    gain.gain.linearRampToValueAtTime(0.001, audioCtx.currentTime + 0.6);
+                    osc.connect(gain); gain.connect(audioCtx.destination);
+                    osc.start(); osc.stop(audioCtx.currentTime + 0.6);
+                } catch(e) {}
             }
         };
 
@@ -255,6 +278,7 @@
                 vx: 0, vy: 0, 
                 hp: BASE_HP, maxHp: BASE_HP,
                 weapon: { icon: randomWeapon.icon, name: randomWeapon.name, damage: BASE_DAMAGE, angle: 0, count: 1 },
+                evolution: 0, // 환골탈태 레벨
                 color: randomColor, score: 0, items: [], status: 'alive',
                 invincibleUntil: Date.now() + 2000, killedBy: null, lostDamage: 0, deathId: null,
                 joinedAt: Date.now(), lastActive: Date.now(), isNpc: false
@@ -269,6 +293,42 @@
             
             setInterval(syncToServer, 100);
         }
+
+        // ==============================================================
+        // ✨ 진화 & 스케일링 핵심 함수 ✨
+        // ==============================================================
+        function getWeaponScale(damage) {
+            // 데미지가 커질수록 루트값에 비례해 크기/반경 증가, 속도 감소
+            return 1 + Math.sqrt(Math.max(0, damage - 5)) / 20; 
+        }
+
+        function checkAndApplyEvolution(p, isLocalUser = false) {
+            let newEvo = p.evolution || 0;
+            const dmg = p.weapon.damage || 0;
+            
+            if (dmg >= 600) newEvo = 3;
+            else if (dmg >= 300) newEvo = 2;
+            else if (dmg >= 150) newEvo = 1;
+
+            if (newEvo > (p.evolution || 0)) {
+                p.evolution = newEvo;
+                // 보스가 아니면 새 무기 아이콘 지급
+                if (!p.isBoss) {
+                    const tierWeapons = EVOLUTION_TIERS[newEvo];
+                    const newWep = tierWeapons[Math.floor(Math.random() * tierWeapons.length)];
+                    p.weapon.icon = newWep.icon;
+                    p.weapon.name = newWep.name;
+                }
+                
+                if (isLocalUser) {
+                    showFloatingText(p.x, p.y - 80, "✨환골탈태!✨", "#9F7AEA");
+                    SFX.evo();
+                }
+                return true;
+            }
+            return false;
+        }
+        // ==============================================================
 
         function setupNetworkListeners() {
             onSnapshot(playersRef, (snapshot) => {
@@ -333,6 +393,8 @@
                 'weapon.angle': me.weapon.angle, 'weapon.count': me.weapon.count,
                 hp: me.hp, score: me.score, 'weapon.damage': me.weapon.damage,
                 items: me.items, status: me.status,
+                evolution: me.evolution, // 진화 상태 동기화
+                'weapon.icon': me.weapon.icon, 'weapon.name': me.weapon.name,
                 invincibleUntil: me.invincibleUntil, killedBy: me.killedBy,
                 deathId: me.deathId, lostDamage: me.lostDamage,
                 lastActive: me.lastActive 
@@ -363,6 +425,7 @@
             } else if (itemType === 'upgrade') {
                 me.weapon.damage += 3;
                 showFloatingText(me.x, me.y - 40, "데미지 +3!", "#F6E05E");
+                checkAndApplyEvolution(me, true); // 아이템으로 스탯 오를 때 진화 체크
             } else if (itemType === 'shield') {
                 me.invincibleUntil = Date.now() + 3000;
                 showFloatingText(me.x, me.y - 40, "3초 무적!", "#63B3ED");
@@ -416,12 +479,20 @@
             me.y = Math.max(20, Math.min(MAP_SIZE - 20, me.y));
         }
 
-        function updateWeaponRotation(dt) { me.weapon.angle += 3 * dt; }
+        function updateWeaponRotation(dt) { 
+            // 🌟 무기가 무거울수록 회전 속도 감소 🌟
+            const scale = getWeaponScale(me.weapon.damage);
+            me.weapon.angle += (3 / scale) * dt; 
+        }
 
         function getWeaponPositions(p) {
             const positions = [];
             if (!p.weapon || p.weapon.count <= 0) return positions;
-            const orbitRadius = 60; const angleStep = (Math.PI * 2) / p.weapon.count;
+            
+            const scale = getWeaponScale(p.weapon.damage);
+            const orbitRadius = 60 * scale; // 🌟 데미지 비례 궤도 확장 🌟
+            const angleStep = (Math.PI * 2) / p.weapon.count;
+            
             for (let i = 0; i < p.weapon.count; i++) {
                 const currentAngle = p.weapon.angle + (i * angleStep);
                 positions.push({ x: p.x + Math.cos(currentAngle) * orbitRadius, y: p.y + Math.sin(currentAngle) * orbitRadius });
@@ -431,7 +502,11 @@
 
         function checkCollisions() {
             const now = Date.now();
-            const myWeaponRadius = 15; const myBodyRadius = 20;
+            
+            const myScale = getWeaponScale(me.weapon.damage);
+            const myWeaponRadius = 15 * myScale; // 🌟 무기 자체 크기도 커짐 🌟
+            const myBodyRadius = 20;
+
             const myWeapons = getWeaponPositions(me);
             let gotHitBody = false;
 
@@ -439,6 +514,9 @@
                 if (key === myUid) continue;
                 const other = otherPlayers[key];
                 if (!other || other.status !== 'alive') continue;
+
+                const otherScale = getWeaponScale(other.weapon?.damage || 5);
+                const otherWeaponRadius = 15 * otherScale;
 
                 const otherWeapons = getWeaponPositions(other);
 
@@ -448,7 +526,7 @@
                         for (let ow of otherWeapons) {
                             if (!mw || !ow) continue;
                             const dist = Math.hypot(ow.x - mw.x, ow.y - mw.y);
-                            if (dist < myWeaponRadius + myWeaponRadius) {
+                            if (dist < myWeaponRadius + otherWeaponRadius) {
                                 const clashId = myUid < key ? `${myUid}_${key}` : `${key}_${myUid}`;
                                 if (!weaponClashCooldowns[clashId] || now > weaponClashCooldowns[clashId]) {
                                     handleWeaponClash(key, other, mw, ow);
@@ -467,7 +545,7 @@
                 for (let ow of otherWeapons) {
                     if (!ow) continue;
                     const distToBody = Math.hypot(ow.x - me.x, ow.y - me.y);
-                    if (distToBody < myWeaponRadius + myBodyRadius) {
+                    if (distToBody < otherWeaponRadius + myBodyRadius) {
                         const dmgAmount = Math.floor(BASE_HP * 0.2); 
                         takeDamage(dmgAmount, other.uid, other.name);
                         gotHitBody = true;
@@ -495,6 +573,7 @@
                 me.weapon.count = Math.min(me.weapon.count + 1, MAX_WEAPONS);
                 me.weapon.damage += 1; 
                 showFloatingText(me.x, me.y - 40, "무기 강탈 & 강화!", "#48BB78");
+                checkAndApplyEvolution(me, true); // 전투 승리 후 진화 체크
                 
                 const newCount = Math.max((other.weapon.count || 0) - 1, 0);
                 updateDoc(doc(playersRef, otherId), { 'weapon.count': newCount }).catch(()=>{});
@@ -504,7 +583,9 @@
                 me.invincibleUntil = Date.now() + 500;
                 
                 if (other.isNpc) {
-                    updateDoc(doc(playersRef, otherId), { 'weapon.count': Math.min((other.weapon.count||0) + 1, MAX_WEAPONS) }).catch(()=>{});
+                    const newCount = Math.min((other.weapon.count||0) + 1, MAX_WEAPONS);
+                    const newDmg = (other.weapon.damage||5) + 1;
+                    updateDoc(doc(playersRef, otherId), { 'weapon.count': newCount, 'weapon.damage': newDmg }).catch(()=>{});
                 }
             } else {
                 showFloatingText(me.x, me.y - 40, "무승부!", "#A0AEC0");
@@ -547,7 +628,10 @@
                     me.hp = me.maxHp; 
                     
                     showFloatingText(me.x, me.y - 60, "상대 처치! 체력 회복!", "#48BB78");
-                    if(absorbedPower > 0) showFloatingText(me.x, me.y - 80, `파워 흡수 +${absorbedPower}!`, "#F6E05E");
+                    if(absorbedPower > 0) {
+                        showFloatingText(me.x, me.y - 80, `파워 흡수 +${absorbedPower}!`, "#F6E05E");
+                        checkAndApplyEvolution(me, true); // 흡수 후 진화 체크
+                    }
                 }
             }
         }
@@ -555,7 +639,9 @@
         function respawn() {
             document.getElementById('death-screen').style.display = 'none';
             me.hp = BASE_HP; me.maxHp = BASE_HP; me.vx = 0; me.vy = 0;
-            me.weapon.damage = BASE_DAMAGE; me.weapon.count = 1; 
+            me.weapon.damage = BASE_DAMAGE; me.weapon.count = 1; me.evolution = 0;
+            const rWep = WEAPONS[Math.floor(Math.random() * WEAPONS.length)];
+            me.weapon.icon = rWep.icon; me.weapon.name = rWep.name;
             me.x = Math.random() * (MAP_SIZE - 200) + 100; me.y = Math.random() * (MAP_SIZE - 200) + 100;
             me.items = []; me.status = 'alive'; me.invincibleUntil = Date.now() + 2000; 
             updateInventoryUI();
@@ -611,8 +697,8 @@
                 lastBotIncreaseTime = Date.now();
             }
 
-            // [봇 증원 시스템] 30초마다 최대 인원 5 증가 (최대 20)
-            if (Date.now() - lastBotIncreaseTime > 30000 && targetNpcCount < 20) {
+            // [봇 증원 제한 수정] 최대 10마리로 하향 조정
+            if (Date.now() - lastBotIncreaseTime > 30000 && targetNpcCount < 10) {
                 targetNpcCount += 5;
                 lastBotIncreaseTime = Date.now();
             }
@@ -620,7 +706,6 @@
             let npcCount = 0;
             for(let k in otherPlayers) { if(otherPlayers[k].isNpc) npcCount++; }
             
-            // 부족한 봇 추가 스폰
             if (npcCount < targetNpcCount) {
                 for(let i = npcCount; i < targetNpcCount; i++) {
                     const npcId = 'npc_' + i;
@@ -631,6 +716,7 @@
                         x: Math.random() * MAP_SIZE, y: Math.random() * MAP_SIZE,
                         hp: isBoss ? 150 : 20, maxHp: isBoss ? 150 : 20, 
                         weapon: { icon: rWep.icon, name: rWep.name, damage: isBoss ? 15 : 3, angle: Math.random()*Math.PI*2, count: isBoss ? 6 : 2 }, 
+                        evolution: 0,
                         color: isBoss ? '#E53E3E' : '#A0AEC0', 
                         score: 0, items: [], status: 'alive', invincibleUntil: 0, joinedAt: Date.now(), lastActive: Date.now(), isNpc: true, isBoss: isBoss,
                         tx: Math.random() * MAP_SIZE, ty: Math.random() * MAP_SIZE
@@ -642,7 +728,6 @@
                 if (key.startsWith('npc_')) {
                     const npc = otherPlayers[key];
                     
-                    // [개선] 봇 무기 0개 시 5초 후 초기화 (사망 처리)
                     if (npc.status === 'alive' && npc.weapon && npc.weapon.count === 0) {
                         if (!npcUnarmedTimers[key]) npcUnarmedTimers[key] = Date.now();
                         if (Date.now() - npcUnarmedTimers[key] > 5000) {
@@ -660,9 +745,11 @@
                         if (!npcRespawnTimers[key]) npcRespawnTimers[key] = Date.now();
                         if (Date.now() - npcRespawnTimers[key] > 5000) {
                             const isBoss = npc.isBoss;
+                            const rWep = isBoss ? { icon: '😈', name: '악마' } : WEAPONS[Math.floor(Math.random() * WEAPONS.length)];
                             updateDoc(doc(playersRef, key), {
-                                status: 'alive', hp: isBoss ? 150 : 20, 
+                                status: 'alive', hp: isBoss ? 150 : 20, evolution: 0,
                                 'weapon.damage': isBoss ? 15 : 3, 'weapon.count': isBoss ? 6 : 2,
+                                'weapon.icon': rWep.icon, 'weapon.name': rWep.name,
                                 x: Math.random() * MAP_SIZE, y: Math.random() * MAP_SIZE
                             }).catch(()=>{});
                             delete npcRespawnTimers[key];
@@ -682,24 +769,31 @@
                         newX = npc.x + (dx/dist)*speed*0.1;
                         newY = npc.y + (dy/dist)*speed*0.1;
                         
+                        // 🌟 봇 물리/진화 적용 🌟
+                        const scale = getWeaponScale(npc.weapon.damage || 5);
                         let updates = { 
                             x: newX, y: newY, 
-                            'weapon.angle': npc.weapon.angle + (npc.isBoss ? 0.4 : 0.3),
+                            'weapon.angle': npc.weapon.angle + (npc.isBoss ? 0.4 : 0.3) / scale, // 무거우면 봇도 느려짐
                             lastActive: Date.now()
                         };
 
-                        // [개선] 봇이 아이템을 먹고 자동 사용함
+                        if (checkAndApplyEvolution(npc, false)) {
+                            updates['evolution'] = npc.evolution;
+                            updates['weapon.icon'] = npc.weapon.icon;
+                            updates['weapon.name'] = npc.weapon.name;
+                        }
+
                         for (let itemId in gameItems) {
                             const item = gameItems[itemId];
                             if (Math.hypot(item.x - newX, item.y - newY) < 30) {
                                 if (item.type === 'heal') updates.hp = Math.min(npc.hp + 15, npc.maxHp);
-                                if (item.type === 'upgrade') updates['weapon.damage'] = npc.weapon.damage + 3;
+                                if (item.type === 'upgrade') updates['weapon.damage'] = (npc.weapon.damage||5) + 3;
                                 if (item.type === 'shield') updates.invincibleUntil = Date.now() + 3000;
-                                if (item.type === 'weapon_box') updates['weapon.count'] = Math.min(npc.weapon.count + 1, MAX_WEAPONS);
+                                if (item.type === 'weapon_box') updates['weapon.count'] = Math.min((npc.weapon.count||0) + 1, MAX_WEAPONS);
                                 
                                 deleteDoc(doc(itemsRef, itemId)).catch(()=>{});
                                 delete gameItems[itemId];
-                                break; // 틱당 1개만
+                                break; 
                             }
                         }
                         updateDoc(doc(playersRef, key), updates).catch(()=>{});
@@ -785,14 +879,26 @@
             
             ctx.textAlign = "center"; ctx.fillStyle = "white"; 
             ctx.font = p.isBoss ? "bold 16px Arial" : (isMe ? "bold 14px Arial" : "12px Arial");
-            ctx.fillText(p.name, p.x, p.y - 35);
+            
+            // 진화 단계에 따른 플레이어 이름 이펙트
+            let nameDisplay = p.name;
+            if(p.evolution === 1) nameDisplay = "⚡ " + p.name + " ⚡";
+            if(p.evolution === 2) nameDisplay = "🔥 " + p.name + " 🔥";
+            if(p.evolution >= 3) nameDisplay = "👑 " + p.name + " 👑";
+
+            ctx.fillText(nameDisplay, p.x, p.y - 35);
             
             const hpRatio = Math.max(0, p.hp / Math.max(30, p.maxHp));
             ctx.fillStyle = "red"; ctx.fillRect(p.x - 20, p.y - 28, 40, 6);
             ctx.fillStyle = "#48BB78"; ctx.fillRect(p.x - 20, p.y - 28, 40 * hpRatio, 6);
 
             const wCount = (p.weapon && p.weapon.count) ? p.weapon.count : 0;
-            const orbitRadius = 60; 
+            
+            // 🌟 렌더링 물리 법칙 적용 (반경 및 폰트 사이즈) 🌟
+            const scale = getWeaponScale(p.weapon?.damage || 5);
+            const orbitRadius = 60 * scale; 
+            const baseFontSize = p.isBoss ? 34 : 28;
+            const scaledFontSize = Math.floor(baseFontSize * scale);
 
             if (wCount > 0) {
                 ctx.beginPath(); ctx.arc(p.x, p.y, orbitRadius, 0, Math.PI * 2);
@@ -804,11 +910,12 @@
                     const wX = p.x + Math.cos(currentAngle) * orbitRadius;
                     const wY = p.y + Math.sin(currentAngle) * orbitRadius;
 
-                    ctx.font = p.isBoss ? "34px Arial" : "28px Arial"; 
+                    ctx.font = `${scaledFontSize}px Arial`; 
                     ctx.textBaseline = "middle"; ctx.fillText(p.weapon.icon, wX, wY);
+                    
                     if (i === 0) {
                         ctx.font = "bold 12px Arial"; ctx.fillStyle = "#F6E05E";
-                        ctx.fillText(`ATK:${p.weapon.damage}`, wX, wY + 20);
+                        ctx.fillText(`ATK:${p.weapon.damage}`, wX, wY + (scaledFontSize/2) + 5);
                     }
                 }
             } else {
