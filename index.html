@@ -78,17 +78,32 @@
     <!-- 게임 로직 -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        // =====================================================================
+        // 🔥 선생님의 Firebase 설정값으로 아래 내용을 덮어쓰세요! 🔥
+        // =====================================================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyA0sbjPjdUReOwWdCRGBjKdQ--YmHBF1g8",
+            authDomain: "orbit-game-class.firebaseapp.com",
+            projectId: "orbit-game-class",
+            storageBucket: "orbit-game-class.firebasestorage.app",
+            messagingSenderId: "47770827555",
+            appId: "1:47770827555:web:c122c3b23587257ed9aa96"
+        };
+        // =====================================================================
+
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        
+        // 고유한 방 이름 (원하는 이름으로 변경 가능)
+        const appId = "my-school-class-room-1";
 
-        const playersRef = collection(db, 'artifacts', appId, 'public', 'data', 'players');
-        const itemsRef = collection(db, 'artifacts', appId, 'public', 'data', 'items');
+        // Firestore 경로 (루트 컬렉션 사용으로 단순화)
+        const playersRef = collection(db, `games/${appId}/players`);
+        const itemsRef = collection(db, `games/${appId}/items`);
 
         const MAP_SIZE = 3000;
         const BASE_HP = 30;
@@ -120,9 +135,9 @@
 
         const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
 
+        let camera = { x: 0, y: 0 };
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
-        let camera = { x: 0, y: 0 };
 
         function resize() {
             canvas.width = window.innerWidth;
@@ -131,11 +146,13 @@
         window.addEventListener('resize', resize);
         resize();
 
+        // 인증 로직 단순화 (외부 환경에서는 익명 로그인만 사용)
         async function initAuth() {
-            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                await signInWithCustomToken(auth, __initial_auth_token);
-            } else {
+            try {
                 await signInAnonymously(auth);
+            } catch (error) {
+                console.error("Firebase Login Error:", error);
+                alert("게임 서버에 접속할 수 없습니다. 관리자에게 문의하세요.");
             }
         }
 
@@ -570,7 +587,6 @@
             document.getElementById('death-screen').style.display = 'none';
             document.getElementById('victory-screen').style.display = 'none';
             
-            // [핵심 변경] 승리 후 리스폰하는 경우라면 죽어있는 봇들을 모두 일제히 부활시킴
             if (isGameWon) {
                 for (const key in otherPlayers) {
                     if (otherPlayers[key].isNpc) {
@@ -661,7 +677,6 @@
                 if (key.startsWith('npc_')) {
                     const npc = otherPlayers[key];
                     if (npc.status === 'dead') {
-                        // [핵심 변경] 봇은 더 이상 시간 경과로 자동 부활하지 않음. 승리자가 부활시켜줄 때까지 대기
                         continue;
                     }
 
