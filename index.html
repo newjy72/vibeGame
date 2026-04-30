@@ -25,20 +25,13 @@
 </head>
 <body>
 
-    <!-- 캔버스 (게임 화면) -->
     <canvas id="gameCanvas"></canvas>
 
-    <!-- UI 레이어 -->
     <div id="ui-layer">
-        <!-- 리더보드 -->
         <div id="leaderboard">
             <h2 class="text-xl font-bold mb-3 border-b border-gray-500 pb-2 text-center text-yellow-300">🏆 접속자 현황</h2>
-            <ul id="player-list" class="space-y-2 text-sm">
-                <!-- 플레이어 목록 렌더링 -->
-            </ul>
+            <ul id="player-list" class="space-y-2 text-sm"></ul>
         </div>
-
-        <!-- 인벤토리 -->
         <div id="inventory">
             <div class="item-slot" id="slot-1"><div class="key-hint">1</div><span></span></div>
             <div class="item-slot" id="slot-2"><div class="key-hint">2</div><span></span></div>
@@ -48,10 +41,8 @@
         </div>
     </div>
 
-    <!-- 플로팅 텍스트 컨테이너 -->
     <div id="floating-texts"></div>
 
-    <!-- 로그인 화면 -->
     <div id="login-screen">
         <h1 class="text-5xl font-bold text-yellow-400 mb-8">⚔️ 궤도 무기 난투 ⚔️</h1>
         <p class="mb-4 text-gray-300 text-center">방향키로 이동, 1~5번 키로 아이템을 사용하세요.<br>소리를 켜주세요! 긴장감 넘치는 난투가 시작됩니다.</p>
@@ -59,14 +50,12 @@
         <button id="join-btn" class="px-8 py-3 bg-blue-600 hover:bg-blue-500 rounded text-xl font-bold transition-colors">게임 시작</button>
     </div>
 
-    <!-- 부활 대기 화면 -->
     <div id="death-screen">
         <h1 class="text-6xl font-bold text-red-500 mb-4 drop-shadow-lg">YOU DIED</h1>
         <p id="death-msg" class="text-2xl text-white mb-6">누군가에게 당했습니다!</p>
         <p class="text-xl text-yellow-300">잠시 후 부활합니다... <span id="respawn-timer">3</span></p>
     </div>
 
-    <!-- 게임 로직 -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
@@ -76,16 +65,17 @@
         // 🔥 선생님의 Firebase 설정값으로 아래 내용을 덮어쓰세요! 🔥
         // =====================================================================
         let firebaseConfig = {
-            apiKey: "AIzaSyA0sbjPjdUReOwWdCRGBjKdQ--YmHBF1g8",
-            authDomain: "orbit-game-class.firebaseapp.com",
-            projectId: "orbit-game-class",
-            storageBucket: "orbit-game-class.firebasestorage.app",
-            messagingSenderId: "47770827555",
-            appId: "1:47770827555:web:c122c3b23587257ed9aa96"
+            apiKey: "여기에_선생님의_API_KEY_입력",
+            authDomain: "여기에_선생님의_AUTH_DOMAIN_입력",
+            projectId: "여기에_선생님의_PROJECT_ID_입력",
+            storageBucket: "여기에_선생님의_STORAGE_BUCKET_입력",
+            messagingSenderId: "여기에_선생님의_SENDER_ID_입력",
+            appId: "여기에_선생님의_APP_ID_입력"
         };
         let gameRoomId = "my-school-class-room-1";
         // =====================================================================
 
+        // 미리보기 호환을 위한 임시 코드 (실제 서비스시 무시됨)
         if (typeof __firebase_config !== 'undefined') firebaseConfig = JSON.parse(__firebase_config);
         if (typeof __app_id !== 'undefined') gameRoomId = __app_id;
 
@@ -130,7 +120,6 @@
         let npcRespawnTimers = {}; 
 
         const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
-
         let camera = { x: 0, y: 0 };
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
@@ -142,79 +131,92 @@
         window.addEventListener('resize', resize);
         resize();
 
-        // --- 오디오 시스템 (웹 오디오 API 합성기) ---
+        // 🎵 오디오 시스템 (내장 웹 오디오 API) 🎵
         let audioCtx = null;
         let bgmInterval = null;
 
         function initAudio() {
-            if (!audioCtx) {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioCtx.state === 'suspended') audioCtx.resume();
                 startBGM();
-            }
+            } catch (e) { console.error("오디오 초기화 에러", e); }
         }
 
         function startBGM() {
             if (bgmInterval) clearInterval(bgmInterval);
-            const notes = [146.83, 164.81, 146.83, 174.61]; // D3, E3, D3, F3 (긴장감 있는 베이스)
+            const notes = [146.83, 164.81, 146.83, 174.61]; // 긴장감 있는 베이스 라인
             let noteIdx = 0;
             bgmInterval = setInterval(() => {
                 if (me && me.status === 'alive') {
-                    const osc = audioCtx.createOscillator();
-                    const gain = audioCtx.createGain();
-                    const filter = audioCtx.createBiquadFilter();
+                    try {
+                        const osc = audioCtx.createOscillator();
+                        const gain = audioCtx.createGain();
+                        const filter = audioCtx.createBiquadFilter();
 
-                    osc.type = 'sawtooth';
-                    osc.frequency.value = notes[noteIdx] / 2; // 한 옥타브 내림
-                    filter.type = 'lowpass';
-                    filter.frequency.value = 300 + Math.random() * 150; // 역동적인 필터
+                        osc.type = 'sawtooth';
+                        osc.frequency.value = notes[noteIdx] / 2; 
+                        filter.type = 'lowpass';
+                        filter.frequency.value = 300 + Math.random() * 150; 
 
-                    gain.gain.setValueAtTime(0.04, audioCtx.currentTime); // 볼륨 조절
-                    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.25);
+                        gain.gain.setValueAtTime(0.04, audioCtx.currentTime); 
+                        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.25);
 
-                    osc.connect(filter); filter.connect(gain); gain.connect(audioCtx.destination);
-                    osc.start(); osc.stop(audioCtx.currentTime + 0.25);
-                    noteIdx = (noteIdx + 1) % notes.length;
+                        osc.connect(filter); filter.connect(gain); gain.connect(audioCtx.destination);
+                        osc.start(); osc.stop(audioCtx.currentTime + 0.25);
+                        noteIdx = (noteIdx + 1) % notes.length;
+                    } catch (e) {}
                 }
-            }, 300); // 템포
+            }, 300);
         }
 
         const SFX = {
             clash: () => {
-                if(!audioCtx) return;
-                const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
-                osc.type = 'square';
-                osc.frequency.setValueAtTime(800, audioCtx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(300, audioCtx.currentTime + 0.1);
-                gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
-                osc.connect(gain); gain.connect(audioCtx.destination);
-                osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+                try {
+                    if(!audioCtx || audioCtx.state !== 'running') return;
+                    const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(300, audioCtx.currentTime + 0.1);
+                    gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+                    osc.connect(gain); gain.connect(audioCtx.destination);
+                    osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+                } catch(e) {}
             },
             hit: () => {
-                if(!audioCtx) return;
-                const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
-                osc.type = 'sawtooth';
-                osc.frequency.setValueAtTime(150, audioCtx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.2);
-                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
-                osc.connect(gain); gain.connect(audioCtx.destination);
-                osc.start(); osc.stop(audioCtx.currentTime + 0.2);
+                try {
+                    if(!audioCtx || audioCtx.state !== 'running') return;
+                    const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.2);
+                    gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+                    osc.connect(gain); gain.connect(audioCtx.destination);
+                    osc.start(); osc.stop(audioCtx.currentTime + 0.2);
+                } catch(e) {}
             },
             item: () => {
-                if(!audioCtx) return;
-                const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(440, audioCtx.currentTime);
-                osc.frequency.setValueAtTime(659.25, audioCtx.currentTime + 0.1); // 아르페지오 업
-                osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.2);
-                gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
-                gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.3);
-                osc.connect(gain); gain.connect(audioCtx.destination);
-                osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+                try {
+                    if(!audioCtx || audioCtx.state !== 'running') return;
+                    const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+                    osc.frequency.setValueAtTime(659.25, audioCtx.currentTime + 0.1); 
+                    osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.2);
+                    gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+                    gain.gain.linearRampToValueAtTime(0.001, audioCtx.currentTime + 0.3); // 안전장치 0.001
+                    osc.connect(gain); gain.connect(audioCtx.destination);
+                    osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+                } catch(e) {}
             }
         };
-        // ---------------------------------------------
+
+        // 브라우저 닫을 때 나를 유령 데이터에서 삭제
+        window.addEventListener('beforeunload', () => {
+            if (myUid) deleteDoc(doc(playersRef, myUid)).catch(()=>{});
+        });
 
         async function initAuth() {
             try {
@@ -238,12 +240,10 @@
                 });
             }
         });
-
         initAuth();
 
         async function joinGame() {
-            initAudio(); // 게임 시작 시 오디오 활성화
-            
+            initAudio(); 
             const nameInput = document.getElementById('player-name').value.trim();
             const name = nameInput || "학생" + Math.floor(Math.random() * 100);
             const randomWeapon = WEAPONS[Math.floor(Math.random() * WEAPONS.length)];
@@ -279,9 +279,16 @@
 
                 snapshot.forEach(docSnap => {
                     const data = docSnap.data();
-                    
-                    // [중요 버그수정] 10초 이상 통신이 끊긴 유령 플레이어는 무시 (봇 멈춤 현상 해결)
-                    if (!data.isNpc && (now - data.lastActive > 10000)) return; 
+                    if (!data) return;
+
+                    // [버그수정] 통신이 15초 이상 끊긴 '유령 플레이어' 차단
+                    if (!data.isNpc) {
+                        const lastActive = data.lastActive || 0;
+                        if (now - lastActive > 15000) {
+                            if (isHost) deleteDoc(doc(playersRef, data.uid)).catch(()=>{}); // 방장이 청소
+                            return; // 목록에서 완전히 제외
+                        }
+                    }
 
                     currentPlayers[data.uid] = data;
                     
@@ -290,6 +297,7 @@
                         potentialHost = data.uid;
                     }
 
+                    // 서버판정: 내가 죽었을 때
                     if (data.uid === myUid && me && me.status === 'alive' && data.status === 'dead') {
                         me.hp = 0; me.status = 'dead';
                         me.killedBy = data.killedBy; me.deathId = data.deathId;
@@ -332,9 +340,7 @@
                 lastActive: me.lastActive 
             }).catch(e => console.error("Sync error", e));
             
-            if (isHost) {
-                manageNPCs(); manageItems();
-            }
+            if (isHost) { manageNPCs(); manageItems(); }
         }
 
         function setupInput() {
@@ -351,7 +357,7 @@
             if (index >= me.items.length) return;
             const itemType = me.items[index];
             me.items.splice(index, 1); 
-            SFX.item(); // 아이템 사용 사운드
+            SFX.item(); 
 
             if (itemType === 'heal') {
                 me.hp = Math.min(me.hp + 15, me.maxHp);
@@ -371,17 +377,21 @@
 
         let lastTime = performance.now();
         function gameLoop(currentTime) {
-            const dt = (currentTime - lastTime) / 1000;
-            lastTime = currentTime;
+            try {
+                const dt = (currentTime - lastTime) / 1000;
+                lastTime = currentTime;
 
-            if (me && me.status === 'alive') {
-                updateMovement(dt);
-                updateWeaponRotation(dt);
-                checkCollisions();
-                checkItemPickups();
-                checkKillRewards();
+                if (me && me.status === 'alive') {
+                    updateMovement(dt);
+                    updateWeaponRotation(dt);
+                    checkCollisions();
+                    checkItemPickups();
+                    checkKillRewards();
+                }
+                draw(dt);
+            } catch (e) {
+                console.error("Game Loop 안에서 오류 발생 (멈춤 방지):", e);
             }
-            draw(dt);
             requestAnimationFrame(gameLoop);
         }
 
@@ -412,7 +422,7 @@
 
         function getWeaponPositions(p) {
             const positions = [];
-            if (p.weapon.count <= 0) return positions;
+            if (!p.weapon || p.weapon.count <= 0) return positions;
             const orbitRadius = 60; const angleStep = (Math.PI * 2) / p.weapon.count;
             for (let i = 0; i < p.weapon.count; i++) {
                 const currentAngle = p.weapon.angle + (i * angleStep);
@@ -430,14 +440,16 @@
             for (const key in otherPlayers) {
                 if (key === myUid) continue;
                 const other = otherPlayers[key];
-                if (other.status !== 'alive') continue;
+                if (!other || other.status !== 'alive') continue;
 
                 const otherWeapons = getWeaponPositions(other);
 
+                // 무기 vs 무기 충돌
                 if (myWeapons.length > 0 && otherWeapons.length > 0) {
                     let weaponClashed = false;
                     for (let mw of myWeapons) {
                         for (let ow of otherWeapons) {
+                            if (!mw || !ow) continue;
                             const dist = Math.hypot(ow.x - mw.x, ow.y - mw.y);
                             if (dist < myWeaponRadius + myWeaponRadius) {
                                 const clashId = myUid < key ? `${myUid}_${key}` : `${key}_${myUid}`;
@@ -455,7 +467,9 @@
 
                 if (now < me.invincibleUntil) continue; 
 
+                // 상대 무기 -> 내 몸통 충돌
                 for (let ow of otherWeapons) {
+                    if (!ow) continue;
                     const distToBody = Math.hypot(ow.x - me.x, ow.y - me.y);
                     if (distToBody < myWeaponRadius + myBodyRadius) {
                         const dmgAmount = Math.floor(BASE_HP * 0.2); 
@@ -469,7 +483,7 @@
         }
 
         function handleWeaponClash(otherId, other, myWeaponPos, otherWeaponPos) {
-            SFX.clash(); // 챙! 사운드
+            SFX.clash(); 
             
             const angle = Math.atan2(me.y - other.y, me.x - other.x);
             me.vx = Math.cos(angle) * 600; me.vy = Math.sin(angle) * 600;
@@ -478,29 +492,32 @@
             const clashY = (myWeaponPos.y + otherWeaponPos.y) / 2;
             showFloatingText(clashX, clashY, "💥 챙!", "#FFF");
 
-            const myDmg = me.weapon.damage; const otherDmg = other.weapon.damage;
+            const myDmg = me.weapon.damage || 0; 
+            const otherDmg = (other.weapon && other.weapon.damage) ? other.weapon.damage : 0;
 
             if (myDmg > otherDmg) {
-                // [무기 데미지 증가 적용]
+                // [개선] 승리 시 무기 개수 증가 + 무기 공격력 자체도 1 강화!
                 me.weapon.count = Math.min(me.weapon.count + 1, MAX_WEAPONS);
-                me.weapon.damage += 1; // 1씩 공격력 강화!
+                me.weapon.damage += 1; 
                 showFloatingText(me.x, me.y - 40, "무기 강탈 & 강화!", "#48BB78");
                 
-                const newCount = Math.max(other.weapon.count - 1, 0);
-                updateDoc(doc(playersRef, otherId), { 'weapon.count': newCount });
+                const newCount = Math.max((other.weapon.count || 0) - 1, 0);
+                updateDoc(doc(playersRef, otherId), { 'weapon.count': newCount }).catch(()=>{});
             } else if (myDmg < otherDmg) {
                 me.weapon.count = Math.max(me.weapon.count - 1, 0);
                 showFloatingText(me.x, me.y - 40, "무기 파괴됨!", "#F56565");
                 me.invincibleUntil = Date.now() + 500;
                 
-                if (other.isNpc) updateDoc(doc(playersRef, otherId), { 'weapon.count': Math.min(other.weapon.count + 1, MAX_WEAPONS) });
+                if (other.isNpc) {
+                    updateDoc(doc(playersRef, otherId), { 'weapon.count': Math.min((other.weapon.count||0) + 1, MAX_WEAPONS) }).catch(()=>{});
+                }
             } else {
                 showFloatingText(me.x, me.y - 40, "무승부!", "#A0AEC0");
             }
         }
 
         function takeDamage(damage, attackerUid, attackerName) {
-            SFX.hit(); // 퍽! 사운드
+            SFX.hit(); 
             me.hp -= damage;
             showFloatingText(me.x, me.y, `-${damage}`, 'red');
 
@@ -523,14 +540,16 @@
         function checkKillRewards() {
             for (const key in otherPlayers) {
                 const other = otherPlayers[key];
-                if (other.status === 'dead' && other.killedBy === myUid && !claimedKills.has(other.deathId)) {
+                if (other && other.status === 'dead' && other.killedBy === myUid && !claimedKills.has(other.deathId)) {
                     claimedKills.add(other.deathId);
-                    SFX.item(); // 띠로롱~ 사운드
+                    SFX.item(); 
                     me.score += 1;
                     
-                    // [적 처치 시 대량의 데미지 흡수!]
+                    // [개선] 적을 처치하면 적 데미지의 절반을 영구적으로 흡수하여 대폭 강해짐!
                     const absorbedPower = Math.ceil((other.lostDamage || 0) / 2);
-                    me.weapon.damage += absorbedPower; 
+                    if (absorbedPower > 0) {
+                        me.weapon.damage += absorbedPower; 
+                    }
                     me.hp = me.maxHp; 
                     
                     showFloatingText(me.x, me.y - 60, "상대 처치! 체력 회복!", "#48BB78");
@@ -552,10 +571,11 @@
             if (me.items.length >= 5) return; 
             for (const itemId in gameItems) {
                 const item = gameItems[itemId];
+                if (!item) continue;
                 const dist = Math.hypot(item.x - me.x, item.y - me.y);
                 if (dist < 30) {
                     me.items.push(item.type);
-                    delete gameItems[itemId]; deleteDoc(doc(itemsRef, itemId)); 
+                    delete gameItems[itemId]; deleteDoc(doc(itemsRef, itemId)).catch(()=>{}); 
                     updateInventoryUI();
                     SFX.item();
                     showFloatingText(me.x, me.y, "+아이템", "#A0AEC0");
@@ -582,7 +602,7 @@
                 const newId = 'item_' + Date.now() + Math.floor(Math.random()*1000);
                 setDoc(doc(itemsRef, newId), {
                     x: Math.random() * (MAP_SIZE - 200) + 100, y: Math.random() * (MAP_SIZE - 200) + 100, type: itemType
-                });
+                }).catch(()=>{});
                 lastItemSpawn = Date.now();
             }
         }
@@ -594,7 +614,7 @@
                 for(let k in otherPlayers) { if(otherPlayers[k].isNpc) npcCount++; }
                 for(let i = npcCount; i < 5; i++) {
                     const npcId = 'npc_' + i;
-                    const isBoss = (i === 0); 
+                    const isBoss = (i === 0); // 대왕 봇 설정
                     const rWep = isBoss ? { icon: '😈', name: '악마' } : WEAPONS[Math.floor(Math.random() * WEAPONS.length)];
                     setDoc(doc(playersRef, npcId), {
                         uid: npcId, name: isBoss ? '🔥 대왕 봇 🔥' : '컴퓨터 봇 ' + i, 
@@ -604,7 +624,7 @@
                         color: isBoss ? '#E53E3E' : '#A0AEC0', 
                         score: 0, items: [], status: 'alive', invincibleUntil: 0, joinedAt: 0, lastActive: Date.now(), isNpc: true, isBoss: isBoss,
                         tx: Math.random() * MAP_SIZE, ty: Math.random() * MAP_SIZE
-                    });
+                    }).catch(()=>{});
                 }
                 npcInitialized = true;
             }
@@ -620,7 +640,7 @@
                                 status: 'alive', hp: isBoss ? 150 : 20, 
                                 'weapon.damage': isBoss ? 15 : 3, 'weapon.count': isBoss ? 6 : 2,
                                 x: Math.random() * MAP_SIZE, y: Math.random() * MAP_SIZE
-                            });
+                            }).catch(()=>{});
                             delete npcRespawnTimers[key];
                         }
                         continue;
@@ -630,14 +650,14 @@
 
                     let dx = npc.tx - npc.x; let dy = npc.ty - npc.y; let dist = Math.hypot(dx, dy);
                     if (dist < 50) {
-                        updateDoc(doc(playersRef, key), { tx: Math.random() * MAP_SIZE, ty: Math.random() * MAP_SIZE, lastActive: Date.now() });
+                        updateDoc(doc(playersRef, key), { tx: Math.random() * MAP_SIZE, ty: Math.random() * MAP_SIZE, lastActive: Date.now() }).catch(()=>{});
                     } else {
                         const speed = npc.isBoss ? 200 : 100;
                         updateDoc(doc(playersRef, key), { 
                             x: npc.x + (dx/dist)*speed*0.1, y: npc.y + (dy/dist)*speed*0.1, 
                             'weapon.angle': npc.weapon.angle + (npc.isBoss ? 0.4 : 0.3),
                             lastActive: Date.now()
-                        });
+                        }).catch(()=>{});
                     }
                 }
             }
@@ -694,7 +714,7 @@
 
             for (const key in otherPlayers) {
                 const p = otherPlayers[key];
-                if (p.status === 'alive') {
+                if (p && p.status === 'alive') {
                     ctx.fillStyle = p.isBoss ? '#E53E3E' : (p.isNpc ? '#A0AEC0' : '#F56565');
                     ctx.beginPath(); ctx.arc(mX + p.x * scale, mY + p.y * scale, p.isBoss ? 4 : 2, 0, Math.PI * 2); ctx.fill();
                 }
@@ -707,7 +727,7 @@
         }
 
         function drawPlayer(p, isMe = false) {
-            if (p.status !== 'alive') return;
+            if (!p || p.status !== 'alive') return;
 
             if (p.invincibleUntil > Date.now()) {
                 ctx.beginPath(); ctx.arc(p.x, p.y, 30, 0, Math.PI * 2);
@@ -726,7 +746,8 @@
             ctx.fillStyle = "red"; ctx.fillRect(p.x - 20, p.y - 28, 40, 6);
             ctx.fillStyle = "#48BB78"; ctx.fillRect(p.x - 20, p.y - 28, 40 * hpRatio, 6);
 
-            const orbitRadius = 60; const wCount = p.weapon.count;
+            const wCount = (p.weapon && p.weapon.count) ? p.weapon.count : 0;
+            const orbitRadius = 60; 
 
             if (wCount > 0) {
                 ctx.beginPath(); ctx.arc(p.x, p.y, orbitRadius, 0, Math.PI * 2);
@@ -754,12 +775,14 @@
         function updateLeaderboard() {
             const list = document.getElementById('player-list'); list.innerHTML = '';
             const sortedPlayers = Object.values(otherPlayers).sort((a, b) => {
-                if (b.score !== a.score) return b.score - a.score; return b.weapon.damage - a.weapon.damage;
+                if (b.score !== a.score) return b.score - a.score; 
+                return (b.weapon?.damage || 0) - (a.weapon?.damage || 0);
             });
             if (me) {
                 if (sortedPlayers.findIndex(p => p.uid === myUid) === -1) sortedPlayers.push(me);
                 sortedPlayers.sort((a, b) => {
-                    if (b.score !== a.score) return b.score - a.score; return b.weapon.damage - a.weapon.damage;
+                    if (b.score !== a.score) return b.score - a.score; 
+                    return (b.weapon?.damage || 0) - (a.weapon?.damage || 0);
                 });
             }
             sortedPlayers.forEach((p, idx) => {
@@ -770,10 +793,24 @@
                 const li = document.createElement('li');
                 const isMeClass = p.uid === myUid ? 'text-green-400 font-bold' : (p.isBoss ? 'text-red-500 font-bold' : (p.isNpc ? 'text-gray-400' : 'text-white'));
                 const statusStr = p.status === 'dead' ? ' <span class="text-red-500 text-xs">[사망]</span>' : '';
+                const weaponIcon = p.weapon ? p.weapon.icon : '';
+                const weaponCount = p.weapon ? p.weapon.count : 0;
+                const weaponDmg = p.weapon ? p.weapon.damage : 0;
+                
                 li.innerHTML = `${rankIcon} <span class="${isMeClass}">${p.name}</span> ${statusStr} 
-                                <div class="text-xs text-gray-400 ml-6">킬: ${p.score} | 무기: ${p.weapon.icon}(${p.weapon.count}개/ATK:${p.weapon.damage})</div>`;
+                                <div class="text-xs text-gray-400 ml-6">킬: ${p.score} | 무기: ${weaponIcon}(${weaponCount}개/ATK:${weaponDmg})</div>`;
                 list.appendChild(li);
             });
+        }
+
+        function showFloatingText(x, y, text, color) {
+            try {
+                const el = document.createElement('div'); el.className = 'effect-text';
+                el.style.color = color; el.innerText = text;
+                el.style.left = (x - camera.x) + 'px'; el.style.top = (y - camera.y) + 'px';
+                document.getElementById('floating-texts').appendChild(el);
+                setTimeout(() => { el.remove(); }, 1000);
+            } catch(e){}
         }
     </script>
 </body>
