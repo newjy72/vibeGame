@@ -45,7 +45,7 @@
 
     <div id="login-screen">
         <h1 class="text-5xl font-bold text-yellow-400 mb-8">⚔️ 궤도 무기 난투 ⚔️</h1>
-        <p class="mb-4 text-gray-300 text-center">방향키로 이동, 1~5번 키로 아이템을 사용하세요.<br>소리를 켜주세요! 긴장감 넘치는 난투가 시작됩니다.</p>
+        <p class="mb-4 text-gray-300 text-center">방향키로 이동, 1~5번 키로 아이템을 사용하세요.<br>시간이 지날수록 봇 군단이 몰려옵니다! 생존하세요!</p>
         <input type="text" id="player-name" placeholder="닉네임 입력 (예: 홍길동)" class="px-4 py-3 rounded text-black text-lg w-64 mb-4 text-center focus:outline-none focus:ring-4 focus:ring-yellow-500" maxlength="8">
         <button id="join-btn" class="px-8 py-3 bg-blue-600 hover:bg-blue-500 rounded text-xl font-bold transition-colors">게임 시작</button>
     </div>
@@ -65,17 +65,17 @@
         // 🔥 선생님의 Firebase 설정값으로 아래 내용을 덮어쓰세요! 🔥
         // =====================================================================
         let firebaseConfig = {
-            apiKey: "AIzaSyA0sbjPjdUReOwWdCRGBjKdQ--YmHBF1g8",
-            authDomain: "orbit-game-class.firebaseapp.com",
-            projectId: "orbit-game-class",
-            storageBucket: "orbit-game-class.firebasestorage.app",
-            messagingSenderId: "47770827555",
-            appId: "1:47770827555:web:c122c3b23587257ed9aa96"
+            apiKey: "여기에_선생님의_API_KEY_입력",
+            authDomain: "여기에_선생님의_AUTH_DOMAIN_입력",
+            projectId: "여기에_선생님의_PROJECT_ID_입력",
+            storageBucket: "여기에_선생님의_STORAGE_BUCKET_입력",
+            messagingSenderId: "여기에_선생님의_SENDER_ID_입력",
+            appId: "여기에_선생님의_APP_ID_입력"
         };
         let gameRoomId = "my-school-class-room-1";
         // =====================================================================
 
-        // 미리보기 호환을 위한 임시 코드 (실제 서비스시 무시됨)
+        // 미리보기 호환을 위한 임시 코드
         if (typeof __firebase_config !== 'undefined') firebaseConfig = JSON.parse(__firebase_config);
         if (typeof __app_id !== 'undefined') gameRoomId = __app_id;
 
@@ -118,6 +118,7 @@
 
         let weaponClashCooldowns = {};
         let npcRespawnTimers = {}; 
+        let npcUnarmedTimers = {}; // 봇 무기 없음 타이머
 
         const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
         let camera = { x: 0, y: 0 };
@@ -131,7 +132,7 @@
         window.addEventListener('resize', resize);
         resize();
 
-        // 🎵 오디오 시스템 (내장 웹 오디오 API) 🎵
+        // 🎵 오디오 시스템 🎵
         let audioCtx = null;
         let bgmInterval = null;
 
@@ -140,12 +141,12 @@
                 if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 if (audioCtx.state === 'suspended') audioCtx.resume();
                 startBGM();
-            } catch (e) { console.error("오디오 초기화 에러", e); }
+            } catch (e) { console.error("오디오 에러", e); }
         }
 
         function startBGM() {
             if (bgmInterval) clearInterval(bgmInterval);
-            const notes = [146.83, 164.81, 146.83, 174.61]; // 긴장감 있는 베이스 라인
+            const notes = [146.83, 164.81, 146.83, 174.61]; 
             let noteIdx = 0;
             bgmInterval = setInterval(() => {
                 if (me && me.status === 'alive') {
@@ -206,14 +207,13 @@
                     osc.frequency.setValueAtTime(659.25, audioCtx.currentTime + 0.1); 
                     osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.2);
                     gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
-                    gain.gain.linearRampToValueAtTime(0.001, audioCtx.currentTime + 0.3); // 안전장치 0.001
+                    gain.gain.linearRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
                     osc.connect(gain); gain.connect(audioCtx.destination);
                     osc.start(); osc.stop(audioCtx.currentTime + 0.3);
                 } catch(e) {}
             }
         };
 
-        // 브라우저 닫을 때 나를 유령 데이터에서 삭제
         window.addEventListener('beforeunload', () => {
             if (myUid) deleteDoc(doc(playersRef, myUid)).catch(()=>{});
         });
@@ -281,12 +281,11 @@
                     const data = docSnap.data();
                     if (!data) return;
 
-                    // [버그수정] 통신이 15초 이상 끊긴 '유령 플레이어' 차단
                     if (!data.isNpc) {
                         const lastActive = data.lastActive || 0;
                         if (now - lastActive > 15000) {
-                            if (isHost) deleteDoc(doc(playersRef, data.uid)).catch(()=>{}); // 방장이 청소
-                            return; // 목록에서 완전히 제외
+                            if (isHost) deleteDoc(doc(playersRef, data.uid)).catch(()=>{});
+                            return; 
                         }
                     }
 
@@ -297,7 +296,6 @@
                         potentialHost = data.uid;
                     }
 
-                    // 서버판정: 내가 죽었을 때
                     if (data.uid === myUid && me && me.status === 'alive' && data.status === 'dead') {
                         me.hp = 0; me.status = 'dead';
                         me.killedBy = data.killedBy; me.deathId = data.deathId;
@@ -328,7 +326,7 @@
 
         function syncToServer() {
             if (!me || me.status !== 'alive') return;
-            me.lastActive = Date.now(); // 생존 신고 갱신
+            me.lastActive = Date.now(); 
             
             updateDoc(doc(playersRef, myUid), {
                 x: me.x, y: me.y,
@@ -390,7 +388,7 @@
                 }
                 draw(dt);
             } catch (e) {
-                console.error("Game Loop 안에서 오류 발생 (멈춤 방지):", e);
+                console.error("Game Loop 에러:", e);
             }
             requestAnimationFrame(gameLoop);
         }
@@ -444,7 +442,6 @@
 
                 const otherWeapons = getWeaponPositions(other);
 
-                // 무기 vs 무기 충돌
                 if (myWeapons.length > 0 && otherWeapons.length > 0) {
                     let weaponClashed = false;
                     for (let mw of myWeapons) {
@@ -467,7 +464,6 @@
 
                 if (now < me.invincibleUntil) continue; 
 
-                // 상대 무기 -> 내 몸통 충돌
                 for (let ow of otherWeapons) {
                     if (!ow) continue;
                     const distToBody = Math.hypot(ow.x - me.x, ow.y - me.y);
@@ -496,7 +492,6 @@
             const otherDmg = (other.weapon && other.weapon.damage) ? other.weapon.damage : 0;
 
             if (myDmg > otherDmg) {
-                // [개선] 승리 시 무기 개수 증가 + 무기 공격력 자체도 1 강화!
                 me.weapon.count = Math.min(me.weapon.count + 1, MAX_WEAPONS);
                 me.weapon.damage += 1; 
                 showFloatingText(me.x, me.y - 40, "무기 강탈 & 강화!", "#48BB78");
@@ -545,7 +540,6 @@
                     SFX.item(); 
                     me.score += 1;
                     
-                    // [개선] 적을 처치하면 적 데미지의 절반을 영구적으로 흡수하여 대폭 강해짐!
                     const absorbedPower = Math.ceil((other.lostDamage || 0) / 2);
                     if (absorbedPower > 0) {
                         me.weapon.damage += absorbedPower; 
@@ -608,13 +602,29 @@
         }
 
         let npcInitialized = false;
+        let targetNpcCount = 5;
+        let lastBotIncreaseTime = Date.now();
+
         function manageNPCs() {
             if (!npcInitialized) {
-                let npcCount = 0;
-                for(let k in otherPlayers) { if(otherPlayers[k].isNpc) npcCount++; }
-                for(let i = npcCount; i < 5; i++) {
+                npcInitialized = true;
+                lastBotIncreaseTime = Date.now();
+            }
+
+            // [봇 증원 시스템] 30초마다 최대 인원 5 증가 (최대 20)
+            if (Date.now() - lastBotIncreaseTime > 30000 && targetNpcCount < 20) {
+                targetNpcCount += 5;
+                lastBotIncreaseTime = Date.now();
+            }
+
+            let npcCount = 0;
+            for(let k in otherPlayers) { if(otherPlayers[k].isNpc) npcCount++; }
+            
+            // 부족한 봇 추가 스폰
+            if (npcCount < targetNpcCount) {
+                for(let i = npcCount; i < targetNpcCount; i++) {
                     const npcId = 'npc_' + i;
-                    const isBoss = (i === 0); // 대왕 봇 설정
+                    const isBoss = (i === 0); 
                     const rWep = isBoss ? { icon: '😈', name: '악마' } : WEAPONS[Math.floor(Math.random() * WEAPONS.length)];
                     setDoc(doc(playersRef, npcId), {
                         uid: npcId, name: isBoss ? '🔥 대왕 봇 🔥' : '컴퓨터 봇 ' + i, 
@@ -622,16 +632,30 @@
                         hp: isBoss ? 150 : 20, maxHp: isBoss ? 150 : 20, 
                         weapon: { icon: rWep.icon, name: rWep.name, damage: isBoss ? 15 : 3, angle: Math.random()*Math.PI*2, count: isBoss ? 6 : 2 }, 
                         color: isBoss ? '#E53E3E' : '#A0AEC0', 
-                        score: 0, items: [], status: 'alive', invincibleUntil: 0, joinedAt: 0, lastActive: Date.now(), isNpc: true, isBoss: isBoss,
+                        score: 0, items: [], status: 'alive', invincibleUntil: 0, joinedAt: Date.now(), lastActive: Date.now(), isNpc: true, isBoss: isBoss,
                         tx: Math.random() * MAP_SIZE, ty: Math.random() * MAP_SIZE
                     }).catch(()=>{});
                 }
-                npcInitialized = true;
             }
 
             for (const key in otherPlayers) {
                 if (key.startsWith('npc_')) {
                     const npc = otherPlayers[key];
+                    
+                    // [개선] 봇 무기 0개 시 5초 후 초기화 (사망 처리)
+                    if (npc.status === 'alive' && npc.weapon && npc.weapon.count === 0) {
+                        if (!npcUnarmedTimers[key]) npcUnarmedTimers[key] = Date.now();
+                        if (Date.now() - npcUnarmedTimers[key] > 5000) {
+                            updateDoc(doc(playersRef, key), {
+                                status: 'dead', hp: 0, killedBy: 'system', deathId: Date.now().toString() + key
+                            }).catch(()=>{});
+                            delete npcUnarmedTimers[key];
+                            continue;
+                        }
+                    } else {
+                        if (npcUnarmedTimers[key]) delete npcUnarmedTimers[key];
+                    }
+
                     if (npc.status === 'dead') {
                         if (!npcRespawnTimers[key]) npcRespawnTimers[key] = Date.now();
                         if (Date.now() - npcRespawnTimers[key] > 5000) {
@@ -649,15 +673,36 @@
                     }
 
                     let dx = npc.tx - npc.x; let dy = npc.ty - npc.y; let dist = Math.hypot(dx, dy);
+                    let newX = npc.x; let newY = npc.y;
+
                     if (dist < 50) {
                         updateDoc(doc(playersRef, key), { tx: Math.random() * MAP_SIZE, ty: Math.random() * MAP_SIZE, lastActive: Date.now() }).catch(()=>{});
                     } else {
                         const speed = npc.isBoss ? 200 : 100;
-                        updateDoc(doc(playersRef, key), { 
-                            x: npc.x + (dx/dist)*speed*0.1, y: npc.y + (dy/dist)*speed*0.1, 
+                        newX = npc.x + (dx/dist)*speed*0.1;
+                        newY = npc.y + (dy/dist)*speed*0.1;
+                        
+                        let updates = { 
+                            x: newX, y: newY, 
                             'weapon.angle': npc.weapon.angle + (npc.isBoss ? 0.4 : 0.3),
                             lastActive: Date.now()
-                        }).catch(()=>{});
+                        };
+
+                        // [개선] 봇이 아이템을 먹고 자동 사용함
+                        for (let itemId in gameItems) {
+                            const item = gameItems[itemId];
+                            if (Math.hypot(item.x - newX, item.y - newY) < 30) {
+                                if (item.type === 'heal') updates.hp = Math.min(npc.hp + 15, npc.maxHp);
+                                if (item.type === 'upgrade') updates['weapon.damage'] = npc.weapon.damage + 3;
+                                if (item.type === 'shield') updates.invincibleUntil = Date.now() + 3000;
+                                if (item.type === 'weapon_box') updates['weapon.count'] = Math.min(npc.weapon.count + 1, MAX_WEAPONS);
+                                
+                                deleteDoc(doc(itemsRef, itemId)).catch(()=>{});
+                                delete gameItems[itemId];
+                                break; // 틱당 1개만
+                            }
+                        }
+                        updateDoc(doc(playersRef, key), updates).catch(()=>{});
                     }
                 }
             }
