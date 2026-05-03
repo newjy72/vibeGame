@@ -19,7 +19,7 @@
         #login-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #1a202c; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: auto; z-index: 100; }
         #death-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(200, 0, 0, 0.3); display: none; flex-direction: column; align-items: center; justify-content: center; pointer-events: auto; z-index: 50; }
         
-        .effect-text { position: absolute; font-weight: bold; font-size: 20px; text-shadow: 1px 1px 2px black; pointer-events: none; animation: floatUp 1s ease-out forwards; }
+        .effect-text { position: absolute; font-weight: bold; font-size: 20px; text-shadow: 1px 1px 2px black; pointer-events: none; animation: floatUp 1s ease-out forwards; z-index: 40; }
         @keyframes floatUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-50px); } }
     </style>
 </head>
@@ -45,7 +45,7 @@
 
     <div id="login-screen">
         <h1 class="text-5xl font-bold text-yellow-400 mb-8">⚔️ 궤도 무기 난투 ⚔️</h1>
-        <p class="mb-4 text-gray-300 text-center">적을 처치하고 데미지를 키워 <strong class="text-purple-400">환골탈태</strong> 하세요!<br>강해질수록 무기가 커지고 묵직해집니다.</p>
+        <p class="mb-4 text-gray-300 text-center">적을 처치하고 <strong class="text-purple-400">환골탈태</strong> 하세요!<br>⭐별 아이템을 먹으면 <strong class="text-yellow-400">거대화 무쌍 모드</strong>가 됩니다!</p>
         <input type="text" id="player-name" placeholder="닉네임 입력 (예: 홍길동)" class="px-4 py-3 rounded text-black text-lg w-64 mb-4 text-center focus:outline-none focus:ring-4 focus:ring-yellow-500" maxlength="8">
         <button id="join-btn" class="px-8 py-3 bg-gray-500 text-white rounded text-xl font-bold transition-colors cursor-not-allowed" disabled>서버 접속 중...</button>
     </div>
@@ -65,12 +65,12 @@
         // 🔥 선생님의 Firebase 설정값으로 아래 내용을 덮어쓰세요! 🔥
         // =====================================================================
         let firebaseConfig = {
-            apiKey: "AIzaSyA0sbjPjdUReOwWdCRGBjKdQ--YmHBF1g8",
-            authDomain: "orbit-game-class.firebaseapp.com",
-            projectId: "orbit-game-class",
-            storageBucket: "orbit-game-class.firebasestorage.app",
-            messagingSenderId: "47770827555",
-            appId: "1:47770827555:web:c122c3b23587257ed9aa96"
+            apiKey: "여기에_선생님의_API_KEY_입력",
+            authDomain: "여기에_선생님의_AUTH_DOMAIN_입력",
+            projectId: "여기에_선생님의_PROJECT_ID_입력",
+            storageBucket: "여기에_선생님의_STORAGE_BUCKET_입력",
+            messagingSenderId: "여기에_선생님의_SENDER_ID_입력",
+            appId: "여기에_선생님의_APP_ID_입력"
         };
         let gameRoomId = "my-school-class-room-1";
         // =====================================================================
@@ -96,13 +96,11 @@
         const BASE_DAMAGE = 5;
         const MAX_WEAPONS = 12; 
         
-        // 0단계 기본 무기
         const WEAPONS = [
             { icon: '🍙', name: '김밥' }, { icon: '☕', name: '커피' }, { icon: '🍎', name: '사과' },
             { icon: '🍔', name: '햄버거' }, { icon: '✏️', name: '연필' }, { icon: '👟', name: '실내화' }
         ];
 
-        // 🌟 환골탈태 진화 무기 목록 🌟
         const EVOLUTION_TIERS = {
             1: [ {icon: '🪓', name: '도끼'}, {icon: '🏹', name: '활'}, {icon: '🗡️', name: '단검'} ],
             2: [ {icon: '⚔️', name: '쌍검'}, {icon: '💣', name: '폭탄'}, {icon: '⚙️', name: '톱니바퀴'} ],
@@ -111,11 +109,13 @@
 
         const COLORS = ['#F56565', '#ED8936', '#ECC94B', '#48BB78', '#38B2AC', '#4299E1', '#9F7AEA', '#ED64A6'];
         
+        // 🌟 신규 아이템: 무적 거대화 별 추가 🌟
         const ITEM_TYPES = [
             { id: 'heal', icon: '💖', color: '#FC8181', desc: '체력 +15' },
             { id: 'upgrade', icon: '🔥', color: '#F6E05E', desc: '데미지 +3' },
             { id: 'shield', icon: '🛡️', color: '#63B3ED', desc: '3초 무적' },
-            { id: 'weapon_box', icon: '🎁', color: '#9F7AEA', desc: '무기 1개 획득' }
+            { id: 'weapon_box', icon: '🎁', color: '#9F7AEA', desc: '무기 1개 획득' },
+            { id: 'star', icon: '⭐', color: '#FAF089', desc: '5초 거대화 무쌍!' } 
         ];
 
         let myUid = null;
@@ -133,6 +133,10 @@
         let camera = { x: 0, y: 0 };
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
+
+        // 🌟 시각적 효과 변수 (화면 진동 및 파티클) 🌟
+        let screenShake = 0;
+        let particles = [];
 
         function resize() {
             canvas.width = window.innerWidth;
@@ -165,15 +169,17 @@
                         const filter = audioCtx.createBiquadFilter();
 
                         osc.type = 'sawtooth';
-                        osc.frequency.value = notes[noteIdx] / 2; 
+                        // 거대화 상태면 BGM도 빠르고 강렬하게!
+                        const isGiant = me.giantUntil > Date.now();
+                        osc.frequency.value = (notes[noteIdx] / 2) * (isGiant ? 1.5 : 1); 
                         filter.type = 'lowpass';
-                        filter.frequency.value = 300 + Math.random() * 150; 
+                        filter.frequency.value = (300 + Math.random() * 150) * (isGiant ? 2 : 1); 
 
-                        gain.gain.setValueAtTime(0.04, audioCtx.currentTime); 
-                        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.25);
+                        gain.gain.setValueAtTime(isGiant ? 0.08 : 0.04, audioCtx.currentTime); 
+                        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + (isGiant ? 0.15 : 0.25));
 
                         osc.connect(filter); filter.connect(gain); gain.connect(audioCtx.destination);
-                        osc.start(); osc.stop(audioCtx.currentTime + 0.25);
+                        osc.start(); osc.stop(audioCtx.currentTime + 0.3);
                         noteIdx = (noteIdx + 1) % notes.length;
                     } catch (e) {}
                 }
@@ -221,7 +227,7 @@
                     osc.start(); osc.stop(audioCtx.currentTime + 0.3);
                 } catch(e) {}
             },
-            evo: () => { // ✨ 환골탈태 사운드 ✨
+            evo: () => { 
                 try {
                     if(!audioCtx || audioCtx.state !== 'running') return;
                     const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
@@ -233,6 +239,19 @@
                     gain.gain.linearRampToValueAtTime(0.001, audioCtx.currentTime + 0.6);
                     osc.connect(gain); gain.connect(audioCtx.destination);
                     osc.start(); osc.stop(audioCtx.currentTime + 0.6);
+                } catch(e) {}
+            },
+            explosion: () => { // 적 처치 시 굉음
+                try {
+                    if(!audioCtx || audioCtx.state !== 'running') return;
+                    const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(100, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(10, audioCtx.currentTime + 0.5);
+                    gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+                    osc.connect(gain); gain.connect(audioCtx.destination);
+                    osc.start(); osc.stop(audioCtx.currentTime + 0.5);
                 } catch(e) {}
             }
         };
@@ -288,9 +307,10 @@
                     vx: 0, vy: 0, 
                     hp: BASE_HP, maxHp: BASE_HP,
                     weapon: { icon: randomWeapon.icon, name: randomWeapon.name, damage: BASE_DAMAGE, angle: 0, count: 1 },
-                    evolution: 0, // 환골탈태 레벨
+                    evolution: 0, 
                     color: randomColor, score: 0, items: [], status: 'alive',
-                    invincibleUntil: Date.now() + 2000, killedBy: null, lostDamage: 0, deathId: null,
+                    invincibleUntil: Date.now() + 2000, giantUntil: 0, // 거대화 타이머 추가
+                    killedBy: null, lostDamage: 0, deathId: null,
                     joinedAt: Date.now(), lastActive: Date.now(), isNpc: false
                 };
 
@@ -301,7 +321,8 @@
                 setupInput();
                 requestAnimationFrame(gameLoop);
                 
-                setInterval(syncToServer, 100);
+                // 📉 데이터 최적화: 초당 10번(100ms) -> 초당 3.3번(300ms)으로 전송 주기 하향
+                setInterval(syncToServer, 300);
             } catch (e) {
                 console.error("Join Game Error:", e);
                 alert("게임 시작 중 오류가 발생했습니다: " + e.message);
@@ -309,10 +330,9 @@
         }
 
         // ==============================================================
-        // ✨ 진화 & 스케일링 핵심 함수 ✨
+        // ✨ 진화 & 파티클 & 스케일링 핵심 함수 ✨
         // ==============================================================
         function getWeaponScale(damage) {
-            // 데미지가 커질수록 루트값에 비례해 크기/반경 증가, 속도 감소
             return 1 + Math.sqrt(Math.max(0, damage - 5)) / 20; 
         }
 
@@ -326,7 +346,6 @@
 
             if (newEvo > (p.evolution || 0)) {
                 p.evolution = newEvo;
-                // 보스가 아니면 새 무기 아이콘 지급
                 if (!p.isBoss) {
                     const tierWeapons = EVOLUTION_TIERS[newEvo];
                     const newWep = tierWeapons[Math.floor(Math.random() * tierWeapons.length)];
@@ -337,10 +356,21 @@
                 if (isLocalUser) {
                     showFloatingText(p.x, p.y - 80, "✨환골탈태!✨", "#9F7AEA");
                     SFX.evo();
+                    createParticles(p.x, p.y, "#9F7AEA", 50); // 진화 파티클
                 }
                 return true;
             }
             return false;
+        }
+
+        function createParticles(x, y, color, count) {
+            for(let i=0; i<count; i++) {
+                particles.push({
+                    x: x, y: y,
+                    vx: (Math.random()-0.5)*800, vy: (Math.random()-0.5)*800,
+                    life: 1.0, color: color
+                });
+            }
         }
         // ==============================================================
 
@@ -407,10 +437,10 @@
                 'weapon.angle': me.weapon.angle, 'weapon.count': me.weapon.count,
                 hp: me.hp, score: me.score, 'weapon.damage': me.weapon.damage,
                 items: me.items, status: me.status,
-                evolution: me.evolution, // 진화 상태 동기화
+                evolution: me.evolution,
                 'weapon.icon': me.weapon.icon, 'weapon.name': me.weapon.name,
-                invincibleUntil: me.invincibleUntil, killedBy: me.killedBy,
-                deathId: me.deathId, lostDamage: me.lostDamage,
+                invincibleUntil: me.invincibleUntil, giantUntil: me.giantUntil || 0,
+                killedBy: me.killedBy, deathId: me.deathId, lostDamage: me.lostDamage,
                 lastActive: me.lastActive 
             }).catch(e => console.error("Sync error", e));
             
@@ -439,13 +469,19 @@
             } else if (itemType === 'upgrade') {
                 me.weapon.damage += 3;
                 showFloatingText(me.x, me.y - 40, "데미지 +3!", "#F6E05E");
-                checkAndApplyEvolution(me, true); // 아이템으로 스탯 오를 때 진화 체크
+                checkAndApplyEvolution(me, true); 
             } else if (itemType === 'shield') {
                 me.invincibleUntil = Date.now() + 3000;
                 showFloatingText(me.x, me.y - 40, "3초 무적!", "#63B3ED");
             } else if (itemType === 'weapon_box') {
                 me.weapon.count = Math.min(me.weapon.count + 1, MAX_WEAPONS);
                 showFloatingText(me.x, me.y - 40, "무기 장착!", "#9F7AEA");
+            } else if (itemType === 'star') { // 🌟 피버 모드 아이템 🌟
+                me.invincibleUntil = Date.now() + 5000;
+                me.giantUntil = Date.now() + 5000;
+                SFX.evo();
+                createParticles(me.x, me.y, "#FAF089", 30);
+                showFloatingText(me.x, me.y - 60, "⭐무쌍 거대화!⭐", "#FAF089");
             }
             updateInventoryUI();
         }
@@ -472,6 +508,8 @@
 
         function updateMovement(dt) {
             let currentSpeed = 250; 
+            if (me.giantUntil > Date.now()) currentSpeed = 400; // 거대화 시 속도 대폭 증가
+
             let dx = 0; let dy = 0;
             if (keys.ArrowUp) dy -= 1; if (keys.ArrowDown) dy += 1;
             if (keys.ArrowLeft) dx -= 1; if (keys.ArrowRight) dx += 1;
@@ -494,17 +532,20 @@
         }
 
         function updateWeaponRotation(dt) { 
-            // 🌟 무기가 무거울수록 회전 속도 감소 🌟
             const scale = getWeaponScale(me.weapon.damage);
-            me.weapon.angle += (3 / scale) * dt; 
+            const giantSpeed = me.giantUntil > Date.now() ? 2 : 1; // 거대화 시 회전속도 2배
+            me.weapon.angle += (3 / scale) * giantSpeed * dt; 
         }
 
         function getWeaponPositions(p) {
             const positions = [];
             if (!p.weapon || p.weapon.count <= 0) return positions;
             
-            const scale = getWeaponScale(p.weapon.damage);
-            const orbitRadius = 60 * scale; // 🌟 데미지 비례 궤도 확장 🌟
+            const isGiant = (p.giantUntil || 0) > Date.now();
+            const giantScale = isGiant ? 1.5 : 1; // 거대화 시 궤도 1.5배 증가
+            const scale = getWeaponScale(p.weapon.damage) * giantScale;
+
+            const orbitRadius = 60 * scale; 
             const angleStep = (Math.PI * 2) / p.weapon.count;
             
             for (let i = 0; i < p.weapon.count; i++) {
@@ -517,9 +558,10 @@
         function checkCollisions() {
             const now = Date.now();
             
-            const myScale = getWeaponScale(me.weapon.damage);
-            const myWeaponRadius = 15 * myScale; // 🌟 무기 자체 크기도 커짐 🌟
-            const myBodyRadius = 20;
+            const myGiant = me.giantUntil > now;
+            const myScale = getWeaponScale(me.weapon.damage) * (myGiant ? 1.5 : 1);
+            const myWeaponRadius = 15 * myScale; 
+            const myBodyRadius = myGiant ? 40 : 20;
 
             const myWeapons = getWeaponPositions(me);
             let gotHitBody = false;
@@ -529,7 +571,8 @@
                 const other = otherPlayers[key];
                 if (!other || other.status !== 'alive') continue;
 
-                const otherScale = getWeaponScale(other.weapon?.damage || 5);
+                const otherGiant = (other.giantUntil || 0) > now;
+                const otherScale = getWeaponScale(other.weapon?.damage || 5) * (otherGiant ? 1.5 : 1);
                 const otherWeaponRadius = 15 * otherScale;
 
                 const otherWeapons = getWeaponPositions(other);
@@ -579,15 +622,19 @@
             const clashX = (myWeaponPos.x + otherWeaponPos.x) / 2;
             const clashY = (myWeaponPos.y + otherWeaponPos.y) / 2;
             showFloatingText(clashX, clashY, "💥 챙!", "#FFF");
+            
+            // 🌟 충돌 파티클 폭발 & 진동 🌟
+            screenShake = 15; 
+            createParticles(clashX, clashY, "#FFF", 10);
 
             const myDmg = me.weapon.damage || 0; 
             const otherDmg = (other.weapon && other.weapon.damage) ? other.weapon.damage : 0;
 
-            if (myDmg > otherDmg) {
+            if (myDmg > otherDmg || (me.giantUntil > Date.now())) { // 거대화 상태면 무조건 이김!
                 me.weapon.count = Math.min(me.weapon.count + 1, MAX_WEAPONS);
                 me.weapon.damage += 1; 
                 showFloatingText(me.x, me.y - 40, "무기 강탈 & 강화!", "#48BB78");
-                checkAndApplyEvolution(me, true); // 전투 승리 후 진화 체크
+                checkAndApplyEvolution(me, true); 
                 
                 const newCount = Math.max((other.weapon.count || 0) - 1, 0);
                 updateDoc(doc(playersRef, otherId), { 'weapon.count': newCount }).catch(()=>{});
@@ -632,9 +679,13 @@
                 const other = otherPlayers[key];
                 if (other && other.status === 'dead' && other.killedBy === myUid && !claimedKills.has(other.deathId)) {
                     claimedKills.add(other.deathId);
-                    SFX.item(); 
-                    me.score += 1;
+                    SFX.explosion(); // 폭발음
                     
+                    // 🌟 처치 시 화면 진동 및 대량 파티클 🌟
+                    screenShake = 30; 
+                    createParticles(other.x || me.x, other.y || me.y, "#F56565", 40);
+
+                    me.score += 1;
                     const absorbedPower = Math.ceil((other.lostDamage || 0) / 2);
                     if (absorbedPower > 0) {
                         me.weapon.damage += absorbedPower; 
@@ -644,7 +695,7 @@
                     showFloatingText(me.x, me.y - 60, "상대 처치! 체력 회복!", "#48BB78");
                     if(absorbedPower > 0) {
                         showFloatingText(me.x, me.y - 80, `파워 흡수 +${absorbedPower}!`, "#F6E05E");
-                        checkAndApplyEvolution(me, true); // 흡수 후 진화 체크
+                        checkAndApplyEvolution(me, true); 
                     }
                 }
             }
@@ -654,6 +705,7 @@
             document.getElementById('death-screen').style.display = 'none';
             me.hp = BASE_HP; me.maxHp = BASE_HP; me.vx = 0; me.vy = 0;
             me.weapon.damage = BASE_DAMAGE; me.weapon.count = 1; me.evolution = 0;
+            me.giantUntil = 0;
             const rWep = WEAPONS[Math.floor(Math.random() * WEAPONS.length)];
             me.weapon.icon = rWep.icon; me.weapon.name = rWep.name;
             me.x = Math.random() * (MAP_SIZE - 200) + 100; me.y = Math.random() * (MAP_SIZE - 200) + 100;
@@ -702,20 +754,11 @@
         }
 
         let npcInitialized = false;
-        let targetNpcCount = 5;
-        let lastBotIncreaseTime = Date.now();
+        // 📉 봇 최적화: 지속 증원 제거, 6마리 고정 (서버 트래픽 감소)
+        let targetNpcCount = 6; 
 
         function manageNPCs() {
-            if (!npcInitialized) {
-                npcInitialized = true;
-                lastBotIncreaseTime = Date.now();
-            }
-
-            // [봇 증원 제한 수정] 최대 10마리로 하향 조정
-            if (Date.now() - lastBotIncreaseTime > 30000 && targetNpcCount < 10) {
-                targetNpcCount += 5;
-                lastBotIncreaseTime = Date.now();
-            }
+            if (!npcInitialized) { npcInitialized = true; }
 
             let npcCount = 0;
             for(let k in otherPlayers) { if(otherPlayers[k].isNpc) npcCount++; }
@@ -730,7 +773,7 @@
                         x: Math.random() * MAP_SIZE, y: Math.random() * MAP_SIZE,
                         hp: isBoss ? 150 : 20, maxHp: isBoss ? 150 : 20, 
                         weapon: { icon: rWep.icon, name: rWep.name, damage: isBoss ? 15 : 3, angle: Math.random()*Math.PI*2, count: isBoss ? 6 : 2 }, 
-                        evolution: 0,
+                        evolution: 0, giantUntil: 0,
                         color: isBoss ? '#E53E3E' : '#A0AEC0', 
                         score: 0, items: [], status: 'alive', invincibleUntil: 0, joinedAt: Date.now(), lastActive: Date.now(), isNpc: true, isBoss: isBoss,
                         tx: Math.random() * MAP_SIZE, ty: Math.random() * MAP_SIZE
@@ -761,7 +804,7 @@
                             const isBoss = npc.isBoss;
                             const rWep = isBoss ? { icon: '😈', name: '악마' } : WEAPONS[Math.floor(Math.random() * WEAPONS.length)];
                             updateDoc(doc(playersRef, key), {
-                                status: 'alive', hp: isBoss ? 150 : 20, evolution: 0,
+                                status: 'alive', hp: isBoss ? 150 : 20, evolution: 0, giantUntil: 0,
                                 'weapon.damage': isBoss ? 15 : 3, 'weapon.count': isBoss ? 6 : 2,
                                 'weapon.icon': rWep.icon, 'weapon.name': rWep.name,
                                 x: Math.random() * MAP_SIZE, y: Math.random() * MAP_SIZE
@@ -779,15 +822,16 @@
                     if (dist < 50) {
                         updateDoc(doc(playersRef, key), { tx: Math.random() * MAP_SIZE, ty: Math.random() * MAP_SIZE, lastActive: Date.now() }).catch(()=>{});
                     } else {
-                        const speed = npc.isBoss ? 200 : 100;
+                        let speed = npc.isBoss ? 200 : 100;
+                        if((npc.giantUntil||0) > Date.now()) speed += 100; // 봇도 아이템 먹으면 빨라짐
+                        
                         newX = npc.x + (dx/dist)*speed*0.1;
                         newY = npc.y + (dy/dist)*speed*0.1;
                         
-                        // 🌟 봇 물리/진화 적용 🌟
                         const scale = getWeaponScale(npc.weapon.damage || 5);
                         let updates = { 
                             x: newX, y: newY, 
-                            'weapon.angle': npc.weapon.angle + (npc.isBoss ? 0.4 : 0.3) / scale, // 무거우면 봇도 느려짐
+                            'weapon.angle': npc.weapon.angle + (npc.isBoss ? 0.4 : 0.3) / scale,
                             lastActive: Date.now()
                         };
 
@@ -804,6 +848,10 @@
                                 if (item.type === 'upgrade') updates['weapon.damage'] = (npc.weapon.damage||5) + 3;
                                 if (item.type === 'shield') updates.invincibleUntil = Date.now() + 3000;
                                 if (item.type === 'weapon_box') updates['weapon.count'] = Math.min((npc.weapon.count||0) + 1, MAX_WEAPONS);
+                                if (item.type === 'star') {
+                                    updates.invincibleUntil = Date.now() + 5000;
+                                    updates.giantUntil = Date.now() + 5000;
+                                }
                                 
                                 deleteDoc(doc(itemsRef, itemId)).catch(()=>{});
                                 delete gameItems[itemId];
@@ -818,44 +866,70 @@
 
         function draw(dt) {
             if (me) {
+                // 🌟 화면 흔들림(Screen Shake) 효과 🌟
+                let shakeX = 0; let shakeY = 0;
+                if (screenShake > 0) {
+                    shakeX = (Math.random() - 0.5) * screenShake;
+                    shakeY = (Math.random() - 0.5) * screenShake;
+                    screenShake -= 50 * dt; // 서서히 멈춤
+                    if (screenShake < 0) screenShake = 0;
+                }
+
                 camera.x += (me.x - canvas.width / 2 - camera.x) * 0.1;
                 camera.y += (me.y - canvas.height / 2 - camera.y) * 0.1;
-            }
 
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.save();
-            ctx.translate(-camera.x, -camera.y);
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.save();
+                ctx.translate(-camera.x + shakeX, -camera.y + shakeY);
 
-            ctx.strokeStyle = '#2D3748'; ctx.lineWidth = 1;
-            const step = 100;
-            const startX = Math.floor(camera.x / step) * step; const startY = Math.floor(camera.y / step) * step;
-            for (let x = startX; x < startX + canvas.width + step; x += step) {
-                ctx.beginPath(); ctx.moveTo(x, camera.y); ctx.lineTo(x, camera.y + canvas.height); ctx.stroke();
-            }
-            for (let y = startY; y < startY + canvas.height + step; y += step) {
-                ctx.beginPath(); ctx.moveTo(camera.x, y); ctx.lineTo(camera.x + canvas.width, y); ctx.stroke();
-            }
-
-            ctx.strokeStyle = '#E2E8F0'; ctx.lineWidth = 5; ctx.strokeRect(0, 0, MAP_SIZE, MAP_SIZE);
-
-            for (const id in gameItems) {
-                const item = gameItems[id];
-                const typeObj = ITEM_TYPES.find(t => t.id === item.type);
-                if (typeObj) {
-                    ctx.font = "24px Arial"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-                    ctx.shadowBlur = 15; ctx.shadowColor = typeObj.color;
-                    ctx.fillText(typeObj.icon, item.x, item.y); ctx.shadowBlur = 0; 
+                // 배경 그리드
+                ctx.strokeStyle = '#2D3748'; ctx.lineWidth = 1;
+                const step = 100;
+                const startX = Math.floor(camera.x / step) * step; const startY = Math.floor(camera.y / step) * step;
+                for (let x = startX; x < startX + canvas.width + step; x += step) {
+                    ctx.beginPath(); ctx.moveTo(x, camera.y); ctx.lineTo(x, camera.y + canvas.height); ctx.stroke();
                 }
-            }
+                for (let y = startY; y < startY + canvas.height + step; y += step) {
+                    ctx.beginPath(); ctx.moveTo(camera.x, y); ctx.lineTo(camera.x + canvas.width, y); ctx.stroke();
+                }
 
-            for (const key in otherPlayers) {
-                if (key === myUid) continue;
-                drawPlayer(otherPlayers[key]);
-            }
+                ctx.strokeStyle = '#E2E8F0'; ctx.lineWidth = 5; ctx.strokeRect(0, 0, MAP_SIZE, MAP_SIZE);
 
-            if (me && me.status === 'alive') drawPlayer(me, true);
-            ctx.restore();
-            drawMinimap();
+                // 🌟 파티클 렌더링 🌟
+                for(let i = particles.length - 1; i >= 0; i--) {
+                    let p = particles[i];
+                    p.x += p.vx * dt; p.y += p.vy * dt;
+                    p.life -= dt * 1.5;
+                    if(p.life <= 0) particles.splice(i, 1);
+                    else {
+                        ctx.globalAlpha = p.life;
+                        ctx.fillStyle = p.color;
+                        ctx.beginPath(); ctx.arc(p.x, p.y, 6, 0, Math.PI*2); ctx.fill();
+                        ctx.globalAlpha = 1.0;
+                    }
+                }
+
+                // 아이템 렌더링
+                for (const id in gameItems) {
+                    const item = gameItems[id];
+                    const typeObj = ITEM_TYPES.find(t => t.id === item.type);
+                    if (typeObj) {
+                        ctx.font = "24px Arial"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+                        ctx.shadowBlur = 15; ctx.shadowColor = typeObj.color;
+                        ctx.fillText(typeObj.icon, item.x, item.y); ctx.shadowBlur = 0; 
+                    }
+                }
+
+                // 플레이어 렌더링
+                for (const key in otherPlayers) {
+                    if (key === myUid) continue;
+                    drawPlayer(otherPlayers[key]);
+                }
+                if (me && me.status === 'alive') drawPlayer(me, true);
+
+                ctx.restore();
+                drawMinimap();
+            }
         }
 
         function drawMinimap() {
@@ -882,41 +956,45 @@
         function drawPlayer(p, isMe = false) {
             if (!p || p.status !== 'alive') return;
 
+            const isGiant = (p.giantUntil || 0) > Date.now();
+            const bodyRadius = isGiant ? 40 : 20; // 🌟 거대화 시 몸집 2배
+
             if (p.invincibleUntil > Date.now()) {
-                ctx.beginPath(); ctx.arc(p.x, p.y, 30, 0, Math.PI * 2);
-                ctx.fillStyle = isMe ? 'rgba(99, 179, 237, 0.4)' : 'rgba(236, 201, 75, 0.4)'; ctx.fill();
+                ctx.beginPath(); ctx.arc(p.x, p.y, bodyRadius + 10, 0, Math.PI * 2);
+                ctx.fillStyle = isGiant ? 'rgba(250, 240, 137, 0.5)' : (isMe ? 'rgba(99, 179, 237, 0.4)' : 'rgba(236, 201, 75, 0.4)'); 
+                ctx.fill();
             }
 
-            ctx.beginPath(); ctx.arc(p.x, p.y, 20, 0, Math.PI * 2);
+            ctx.beginPath(); ctx.arc(p.x, p.y, bodyRadius, 0, Math.PI * 2);
             ctx.fillStyle = p.color || '#FFF'; ctx.fill();
             if (isMe) { ctx.lineWidth = 3; ctx.strokeStyle = '#FFF'; ctx.stroke(); }
             
             ctx.textAlign = "center"; ctx.fillStyle = "white"; 
             ctx.font = p.isBoss ? "bold 16px Arial" : (isMe ? "bold 14px Arial" : "12px Arial");
             
-            // 진화 단계에 따른 플레이어 이름 이펙트
             let nameDisplay = p.name;
             if(p.evolution === 1) nameDisplay = "⚡ " + p.name + " ⚡";
             if(p.evolution === 2) nameDisplay = "🔥 " + p.name + " 🔥";
             if(p.evolution >= 3) nameDisplay = "👑 " + p.name + " 👑";
+            if(isGiant) nameDisplay = "🌟 " + nameDisplay + " 🌟";
 
-            ctx.fillText(nameDisplay, p.x, p.y - 35);
+            ctx.fillText(nameDisplay, p.x, p.y - (bodyRadius + 15));
             
             const hpRatio = Math.max(0, p.hp / Math.max(30, p.maxHp));
-            ctx.fillStyle = "red"; ctx.fillRect(p.x - 20, p.y - 28, 40, 6);
-            ctx.fillStyle = "#48BB78"; ctx.fillRect(p.x - 20, p.y - 28, 40 * hpRatio, 6);
+            ctx.fillStyle = "red"; ctx.fillRect(p.x - 20, p.y - (bodyRadius + 8), 40, 6);
+            ctx.fillStyle = "#48BB78"; ctx.fillRect(p.x - 20, p.y - (bodyRadius + 8), 40 * hpRatio, 6);
 
             const wCount = (p.weapon && p.weapon.count) ? p.weapon.count : 0;
             
-            // 🌟 렌더링 물리 법칙 적용 (반경 및 폰트 사이즈) 🌟
-            const scale = getWeaponScale(p.weapon?.damage || 5);
+            const scale = getWeaponScale(p.weapon?.damage || 5) * (isGiant ? 1.5 : 1);
             const orbitRadius = 60 * scale; 
             const baseFontSize = p.isBoss ? 34 : 28;
             const scaledFontSize = Math.floor(baseFontSize * scale);
 
             if (wCount > 0) {
                 ctx.beginPath(); ctx.arc(p.x, p.y, orbitRadius, 0, Math.PI * 2);
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)'; ctx.lineWidth = 1; ctx.stroke();
+                ctx.strokeStyle = isGiant ? 'rgba(250, 240, 137, 0.4)' : 'rgba(255, 255, 255, 0.1)'; 
+                ctx.lineWidth = isGiant ? 3 : 1; ctx.stroke();
 
                 const angleStep = (Math.PI * 2) / wCount;
                 for (let i = 0; i < wCount; i++) {
@@ -934,7 +1012,7 @@
                 }
             } else {
                 ctx.font = "bold 12px Arial"; ctx.fillStyle = "#F56565";
-                ctx.fillText(`무기 없음!`, p.x, p.y + 35);
+                ctx.fillText(`무기 없음!`, p.x, p.y + (bodyRadius + 15));
             }
         }
 
