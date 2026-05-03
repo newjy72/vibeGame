@@ -99,14 +99,13 @@
             { icon: '🍔', name: '햄버거' }, { icon: '✏️', name: '연필' }, { icon: '👟', name: '실내화' }
         ];
 
-        // 🌟 진화 단계 세분화 (50, 100, 150, 200, 400, 800) 🌟
         const EVOLUTION_TIERS = {
-            1: [ {icon: '🪓', name: '도끼'}, {icon: '🏹', name: '활'}, {icon: '🗡️', name: '단검'} ], // 50
-            2: [ {icon: '⚔️', name: '쌍검'}, {icon: '💣', name: '폭탄'}, {icon: '⚙️', name: '톱니바퀴'} ], // 100
-            3: [ {icon: '🔫', name: '총'}, {icon: '🧨', name: '다이너마이트'}, {icon: '⛓️', name: '철퇴'} ], // 150
-            4: [ {icon: '🔱', name: '삼지창'}, {icon: '🛡️', name: '방패'}, {icon: '🪄', name: '마법지팡이'} ], // 200
-            5: [ {icon: '⚡', name: '뇌전'}, {icon: '🔥', name: '지옥불'}, {icon: '🌠', name: '운석'} ], // 400
-            6: [ {icon: '🌌', name: '블랙홀'}, {icon: '☀️', name: '태양'}, {icon: '🌀', name: '차원균열'} ] // 800
+            1: [ {icon: '🪓', name: '도끼'}, {icon: '🏹', name: '활'}, {icon: '🗡️', name: '단검'} ], 
+            2: [ {icon: '⚔️', name: '쌍검'}, {icon: '💣', name: '폭탄'}, {icon: '⚙️', name: '톱니바퀴'} ], 
+            3: [ {icon: '🔫', name: '총'}, {icon: '🧨', name: '다이너마이트'}, {icon: '⛓️', name: '철퇴'} ], 
+            4: [ {icon: '🔱', name: '삼지창'}, {icon: '🛡️', name: '방패'}, {icon: '🪄', name: '마법지팡이'} ], 
+            5: [ {icon: '⚡', name: '뇌전'}, {icon: '🔥', name: '지옥불'}, {icon: '🌠', name: '운석'} ], 
+            6: [ {icon: '🌌', name: '블랙홀'}, {icon: '☀️', name: '태양'}, {icon: '🌀', name: '차원균열'} ] 
         };
 
         const COLORS = ['#F56565', '#ED8936', '#ECC94B', '#48BB78', '#38B2AC', '#4299E1', '#9F7AEA', '#ED64A6'];
@@ -129,6 +128,9 @@
         let weaponClashCooldowns = {};
         let npcRespawnTimers = {}; 
         let npcUnarmedTimers = {}; 
+        
+        // 🌟 브라우저 탭 절전모드(유령) 판별용 타이머
+        let playerLastActiveTimes = {}; 
 
         const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
         let camera = { x: 0, y: 0 };
@@ -323,7 +325,8 @@
             requestAnimationFrame(gameLoop);
             setInterval(syncToServer, 300); 
 
-            setDoc(doc(playersRef, myUid), me).catch(e => {
+            // 최초 생성 (병합 옵션 적용)
+            setDoc(doc(playersRef, myUid), me, { merge: true }).catch(e => {
                 console.error("서버 데이터 생성 지연 발생:", e);
             });
         }
@@ -339,7 +342,6 @@
             let newEvo = p.evolution || 0;
             const dmg = p.weapon.damage || 0;
             
-            // 🌟 세분화된 진화 컷트라인 적용 🌟
             if (dmg >= 800) newEvo = 6;
             else if (dmg >= 400) newEvo = 5;
             else if (dmg >= 200) newEvo = 4;
@@ -388,23 +390,28 @@
                     const data = docSnap.data();
                     if (!data) return;
 
+                    // 🌟 유령 플레이어 완벽 차단 로직 (로컬 타이머 교차 검증) 🌟
                     if (!data.isNpc) {
-                        const lastActive = data.lastActive || 0;
-                        if (now - lastActive > 15000) {
-                            if (isHost) deleteDoc(doc(playersRef, data.uid)).catch(()=>{});
+                        if (!playerLastActiveTimes[data.uid]) {
+                            playerLastActiveTimes[data.uid] = { serverVal: data.lastActive, localTime: now };
+                        } else if (playerLastActiveTimes[data.uid].serverVal !== data.lastActive) {
+                            playerLastActiveTimes[data.uid] = { serverVal: data.lastActive, localTime: now };
+                        }
+
+                        // 30초 동안 움직임(통신)이 없으면 유령으로 취급하여 표시하지 않음
+                        if (now - playerLastActiveTimes[data.uid].localTime > 30000) {
+                            if (isHost && data.uid !== myUid) {
+                                deleteDoc(doc(playersRef, data.uid)).catch(()=>{});
+                            }
                             return; 
                         }
                     }
 
-                    // 🌟 보간법(Lerp) 처리를 위한 타겟 좌표 설정 🌟
                     if (otherPlayers[data.uid]) {
                         data.targetX = data.x;
                         data.targetY = data.y;
-                        // 통신 전까지 로컬에서 부드럽게 이동한 좌표를 유지
                         data.x = otherPlayers[data.uid].x; 
                         data.y = otherPlayers[data.uid].y;
-                        
-                        // 각도(angle)도 로컬에서 부드럽게 돌아가도록 유지
                         if (data.weapon && otherPlayers[data.uid].weapon) {
                             data.weapon.angle = otherPlayers[data.uid].weapon.angle;
                         }
@@ -449,10 +456,11 @@
         }
 
         function syncToServer() {
-            if (!me || me.status !== 'alive') return;
+            if (!me) return;
             me.lastActive = Date.now(); 
             
-            updateDoc(doc(playersRef, myUid), {
+            // 🌟 updateDoc 대신 setDoc 병합 사용: 강제로 데이터 부활 🌟
+            setDoc(doc(playersRef, myUid), {
                 x: me.x, y: me.y,
                 'weapon.angle': me.weapon.angle, 'weapon.count': me.weapon.count,
                 hp: me.hp, score: me.score, 'weapon.damage': me.weapon.damage,
@@ -462,9 +470,9 @@
                 invincibleUntil: me.invincibleUntil, giantUntil: me.giantUntil || 0,
                 killedBy: me.killedBy, deathId: me.deathId, lostDamage: me.lostDamage,
                 lastActive: me.lastActive 
-            }).catch(e => console.error("Sync error", e));
+            }, { merge: true }).catch(e => console.error("Sync error", e));
             
-            if (isHost) { manageNPCs(); manageItems(); }
+            if (isHost && me.status === 'alive') { manageNPCs(); manageItems(); }
         }
 
         function setupInput() {
@@ -550,7 +558,6 @@
             me.x = Math.max(20, Math.min(MAP_SIZE - 20, me.x));
             me.y = Math.max(20, Math.min(MAP_SIZE - 20, me.y));
 
-            // 🌟 봇 및 타 플레이어 부드러운 움직임 보간(Lerp) 적용 🌟
             for (const uid in otherPlayers) {
                 let p = otherPlayers[uid];
                 if (p.targetX !== undefined && p.targetY !== undefined) {
@@ -565,7 +572,6 @@
             const giantSpeed = me.giantUntil > Date.now() ? 2 : 1; 
             me.weapon.angle += (3 / scale) * giantSpeed * dt; 
 
-            // 🌟 봇 및 타 플레이어 무기도 화면에서 부드럽게 계속 회전시킴 🌟
             for (const uid in otherPlayers) {
                 let p = otherPlayers[uid];
                 if (p.weapon && p.status === 'alive') {
@@ -875,7 +881,6 @@
                             updates['weapon.name'] = npc.weapon.name;
                         }
 
-                        // 🌟 [최적화] 봇 아이템 획득 및 인공지능 사용 🌟
                         for (let itemId in gameItems) {
                             const item = gameItems[itemId];
                             if (Math.hypot(item.x - newX, item.y - newY) < 30) {
@@ -890,7 +895,6 @@
                             }
                         }
 
-                        // 주변에 플레이어가 있을 때만 인벤토리 아이템 사용 (가벼운 연산)
                         if (npc.items && npc.items.length > 0) {
                             let playerNearby = false;
                             if (me && me.status === 'alive' && Math.hypot(me.x - newX, me.y - newY) < 400) {
