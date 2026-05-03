@@ -457,12 +457,18 @@
                 otherPlayers = currentPlayers;
                 isHost = (potentialHost === myUid);
                 updateLeaderboard();
+            }, (error) => {
+                console.error("playersRef 실시간 수신 오류:", error);
+                document.getElementById('debug-info').innerText = "플레이어 수신 오류: Firebase 규칙/경로 확인";
             });
 
             onSnapshot(itemsRef, (snapshot) => {
                 const currentItems = {};
                 snapshot.forEach(docSnap => { currentItems[docSnap.id] = docSnap.data(); });
                 gameItems = currentItems;
+            }, (error) => {
+                console.error("itemsRef 실시간 수신 오류:", error);
+                document.getElementById('debug-info').innerText = "아이템 수신 오류: Firebase 규칙/경로 확인";
             });
         }
 
@@ -1110,7 +1116,9 @@
                 const weaponIcon = p.weapon ? p.weapon.icon : '';
                 const weaponCount = p.weapon ? p.weapon.count : 0;
                 const weaponDmg = p.weapon ? p.weapon.damage : 0;
-                
+
+                // ✅ li 요소를 먼저 만든 뒤 내용을 넣어야 합니다.
+                const li = document.createElement('li');
                 li.innerHTML = `${rankIcon} <span class="${isMeClass}">${p.name}</span> ${statusStr} 
                                 <div class="text-xs text-gray-400 ml-6">킬: ${p.score} | 무기: ${weaponIcon}(${weaponCount}개/ATK:${weaponDmg})</div>`;
                 list.appendChild(li);
