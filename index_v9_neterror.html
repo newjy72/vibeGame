@@ -1,0 +1,1122 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>우당탕탕 궤도 무기 난투</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #1a202c; color: white; font-family: 'Malgun Gothic', sans-serif; }
+        canvas { display: block; }
+        
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        
+        #leaderboard { position: absolute; top: 20px; right: 20px; width: 250px; background: rgba(0, 0, 0, 0.6); padding: 15px; border-radius: 10px; pointer-events: auto; max-height: 80%; overflow-y: auto; }
+        #inventory { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; background: rgba(0, 0, 0, 0.6); padding: 15px; border-radius: 10px; pointer-events: auto; }
+        .item-slot { width: 50px; height: 50px; border: 2px solid #4a5568; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 24px; position: relative; background: #2d3748; }
+        .item-slot .key-hint { position: absolute; top: -10px; left: -10px; background: #ecc94b; color: black; font-size: 12px; font-weight: bold; width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+        
+        #login-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #1a202c; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: auto; z-index: 100; }
+        #death-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(200, 0, 0, 0.3); display: none; flex-direction: column; align-items: center; justify-content: center; pointer-events: auto; z-index: 50; }
+        
+        .effect-text { position: absolute; font-weight: bold; font-size: 20px; text-shadow: 1px 1px 2px black; pointer-events: none; animation: floatUp 1s ease-out forwards; z-index: 40; }
+        @keyframes floatUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-50px); } }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="ui-layer">
+        <div id="leaderboard">
+            <h2 class="text-xl font-bold mb-3 border-b border-gray-500 pb-2 text-center text-yellow-300">🏆 접속자 현황</h2>
+            <ul id="player-list" class="space-y-2 text-sm"></ul>
+        </div>
+        <div id="inventory">
+            <div class="item-slot" id="slot-1"><div class="key-hint">1</div><span></span></div>
+            <div class="item-slot" id="slot-2"><div class="key-hint">2</div><span></span></div>
+            <div class="item-slot" id="slot-3"><div class="key-hint">3</div><span></span></div>
+            <div class="item-slot" id="slot-4"><div class="key-hint">4</div><span></span></div>
+            <div class="item-slot" id="slot-5"><div class="key-hint">5</div><span></span></div>
+        </div>
+    </div>
+
+    <div id="floating-texts"></div>
+
+    <div id="login-screen">
+        <h1 class="text-5xl font-bold text-yellow-400 mb-8">⚔️ 궤도 무기 난투 ⚔️</h1>
+        <p class="mb-4 text-gray-300 text-center">적을 처치하고 <strong class="text-purple-400">환골탈태</strong> 하세요!<br>⭐별 아이템을 먹으면 <strong class="text-yellow-400">거대화 무쌍 모드</strong>가 됩니다!</p>
+        <input type="text" id="player-name" placeholder="닉네임 입력 (예: 홍길동)" class="px-4 py-3 rounded text-black text-lg w-64 mb-4 text-center focus:outline-none focus:ring-4 focus:ring-yellow-500" maxlength="8">
+        <button id="join-btn" class="px-8 py-3 bg-gray-500 text-white rounded text-xl font-bold transition-colors cursor-not-allowed" disabled>서버 접속 중...</button>
+    </div>
+
+    <div id="death-screen">
+        <h1 class="text-6xl font-bold text-red-500 mb-4 drop-shadow-lg">YOU DIED</h1>
+        <p id="death-msg" class="text-2xl text-white mb-6">누군가에게 당했습니다!</p>
+        <p class="text-xl text-yellow-300">잠시 후 부활합니다... <span id="respawn-timer">3</span></p>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // =====================================================================
+        // 🔥 선생님의 Firebase 설정값으로 아래 내용을 덮어쓰세요! 🔥
+        // =====================================================================
+        let firebaseConfig = {
+            apiKey: "여기에_선생님의_API_KEY_입력",
+            authDomain: "여기에_선생님의_AUTH_DOMAIN_입력",
+            projectId: "여기에_선생님의_PROJECT_ID_입력",
+            storageBucket: "여기에_선생님의_STORAGE_BUCKET_입력",
+            messagingSenderId: "여기에_선생님의_SENDER_ID_입력",
+            appId: "여기에_선생님의_APP_ID_입력"
+        };
+        let gameRoomId = "my-school-class-room-1";
+        // =====================================================================
+
+        try {
+            if (typeof __firebase_config !== 'undefined' && __firebase_config) firebaseConfig = JSON.parse(__firebase_config);
+            if (typeof __app_id !== 'undefined' && __app_id) gameRoomId = __app_id;
+        } catch (e) {
+            console.error("환경 변수 로드 에러:", e);
+        }
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        const playersRef = collection(db, 'artifacts', gameRoomId, 'public', 'data', 'players');
+        const itemsRef = collection(db, 'artifacts', gameRoomId, 'public', 'data', 'items');
+
+        const MAP_SIZE = 3000;
+        const BASE_HP = 30;
+        const BASE_DAMAGE = 5;
+        const MAX_WEAPONS = 12; 
+        
+        const WEAPONS = [
+            { icon: '🍙', name: '김밥' }, { icon: '☕', name: '커피' }, { icon: '🍎', name: '사과' },
+            { icon: '🍔', name: '햄버거' }, { icon: '✏️', name: '연필' }, { icon: '👟', name: '실내화' }
+        ];
+
+        const EVOLUTION_TIERS = {
+            1: [ {icon: '🪓', name: '도끼'}, {icon: '🏹', name: '활'}, {icon: '🗡️', name: '단검'} ], 
+            2: [ {icon: '⚔️', name: '쌍검'}, {icon: '💣', name: '폭탄'}, {icon: '⚙️', name: '톱니바퀴'} ], 
+            3: [ {icon: '🔫', name: '총'}, {icon: '🧨', name: '다이너마이트'}, {icon: '⛓️', name: '철퇴'} ], 
+            4: [ {icon: '🔱', name: '삼지창'}, {icon: '🛡️', name: '방패'}, {icon: '🪄', name: '마법지팡이'} ], 
+            5: [ {icon: '⚡', name: '뇌전'}, {icon: '🔥', name: '지옥불'}, {icon: '🌠', name: '운석'} ], 
+            6: [ {icon: '🌌', name: '블랙홀'}, {icon: '☀️', name: '태양'}, {icon: '🌀', name: '차원균열'} ] 
+        };
+
+        const COLORS = ['#F56565', '#ED8936', '#ECC94B', '#48BB78', '#38B2AC', '#4299E1', '#9F7AEA', '#ED64A6'];
+        
+        const ITEM_TYPES = [
+            { id: 'heal', icon: '💖', color: '#FC8181', desc: '체력 +15' },
+            { id: 'upgrade', icon: '🔥', color: '#F6E05E', desc: '데미지 +3' },
+            { id: 'shield', icon: '🛡️', color: '#63B3ED', desc: '3초 무적' },
+            { id: 'weapon_box', icon: '🎁', color: '#9F7AEA', desc: '무기 1개 획득' },
+            { id: 'star', icon: '⭐', color: '#FAF089', desc: '5초 거대화 무쌍!' } 
+        ];
+
+        let myUid = null;
+        let me = null;
+        let otherPlayers = {};
+        let gameItems = {};
+        let claimedKills = new Set();
+        let isHost = false; 
+
+        let weaponClashCooldowns = {};
+        let npcRespawnTimers = {}; 
+        let npcUnarmedTimers = {}; 
+        
+        // 🌟 브라우저 탭 절전모드(유령) 판별용 타이머
+        let playerLastActiveTimes = {}; 
+
+        const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
+        let camera = { x: 0, y: 0 };
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let screenShake = 0;
+        let particles = [];
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // 🎵 오디오 시스템 🎵
+        let audioCtx = null;
+        let bgmInterval = null;
+
+        function initAudio() {
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                startBGM();
+            } catch (e) { console.error("오디오 에러", e); }
+        }
+
+        function startBGM() {
+            if (bgmInterval) clearInterval(bgmInterval);
+            const notes = [146.83, 164.81, 146.83, 174.61]; 
+            let noteIdx = 0;
+            bgmInterval = setInterval(() => {
+                if (me && me.status === 'alive') {
+                    try {
+                        const osc = audioCtx.createOscillator();
+                        const gain = audioCtx.createGain();
+                        const filter = audioCtx.createBiquadFilter();
+
+                        osc.type = 'sawtooth';
+                        const isGiant = me.giantUntil > Date.now();
+                        osc.frequency.value = (notes[noteIdx] / 2) * (isGiant ? 1.5 : 1); 
+                        filter.type = 'lowpass';
+                        filter.frequency.value = (300 + Math.random() * 150) * (isGiant ? 2 : 1); 
+
+                        gain.gain.setValueAtTime(isGiant ? 0.08 : 0.04, audioCtx.currentTime); 
+                        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + (isGiant ? 0.15 : 0.25));
+
+                        osc.connect(filter); filter.connect(gain); gain.connect(audioCtx.destination);
+                        osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+                        noteIdx = (noteIdx + 1) % notes.length;
+                    } catch (e) {}
+                }
+            }, 300);
+        }
+
+        const SFX = {
+            clash: () => {
+                try {
+                    if(!audioCtx || audioCtx.state !== 'running') return;
+                    const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(300, audioCtx.currentTime + 0.1);
+                    gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+                    osc.connect(gain); gain.connect(audioCtx.destination);
+                    osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+                } catch(e) {}
+            },
+            hit: () => {
+                try {
+                    if(!audioCtx || audioCtx.state !== 'running') return;
+                    const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.2);
+                    gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+                    osc.connect(gain); gain.connect(audioCtx.destination);
+                    osc.start(); osc.stop(audioCtx.currentTime + 0.2);
+                } catch(e) {}
+            },
+            item: () => {
+                try {
+                    if(!audioCtx || audioCtx.state !== 'running') return;
+                    const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+                    osc.frequency.setValueAtTime(659.25, audioCtx.currentTime + 0.1); 
+                    osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.2);
+                    gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+                    gain.gain.linearRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+                    osc.connect(gain); gain.connect(audioCtx.destination);
+                    osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+                } catch(e) {}
+            },
+            evo: () => { 
+                try {
+                    if(!audioCtx || audioCtx.state !== 'running') return;
+                    const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+                    osc.frequency.linearRampToValueAtTime(880, audioCtx.currentTime + 0.2);
+                    osc.frequency.linearRampToValueAtTime(1760, audioCtx.currentTime + 0.5);
+                    gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                    gain.gain.linearRampToValueAtTime(0.001, audioCtx.currentTime + 0.6);
+                    osc.connect(gain); gain.connect(audioCtx.destination);
+                    osc.start(); osc.stop(audioCtx.currentTime + 0.6);
+                } catch(e) {}
+            },
+            explosion: () => {
+                try {
+                    if(!audioCtx || audioCtx.state !== 'running') return;
+                    const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(100, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(10, audioCtx.currentTime + 0.5);
+                    gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+                    osc.connect(gain); gain.connect(audioCtx.destination);
+                    osc.start(); osc.stop(audioCtx.currentTime + 0.5);
+                } catch(e) {}
+            }
+        };
+
+        window.addEventListener('beforeunload', () => {
+            if (myUid) deleteDoc(doc(playersRef, myUid)).catch(()=>{});
+        });
+
+        async function initAuth() {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Firebase Login Error:", error);
+                const joinBtn = document.getElementById('join-btn');
+                joinBtn.innerText = "서버 접속 실패 (설정 확인)";
+                alert("게임 서버에 접속할 수 없습니다.\n독립 실행 시 Firebase 설정값을 정확히 입력했는지 확인하세요.");
+            }
+        }
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                myUid = user.uid;
+                const joinBtn = document.getElementById('join-btn');
+                joinBtn.innerText = "게임 시작";
+                joinBtn.className = "px-8 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded text-xl font-bold transition-colors cursor-pointer";
+                joinBtn.disabled = false;
+                joinBtn.onclick = joinGame;
+
+                document.getElementById('player-name').onkeyup = (e) => {
+                    if (e.key === 'Enter' && !joinBtn.disabled) joinGame();
+                };
+            }
+        });
+        initAuth();
+
+        function joinGame() {
+            if (!myUid || me) return; 
+            
+            const joinBtn = document.getElementById('join-btn');
+            joinBtn.innerText = "입장 중...";
+            joinBtn.disabled = true;
+
+            initAudio(); 
+            
+            const nameInput = document.getElementById('player-name').value.trim();
+            const name = nameInput || "학생" + Math.floor(Math.random() * 100);
+            const randomWeapon = WEAPONS[Math.floor(Math.random() * WEAPONS.length)];
+            const randomColor = COLORS[Math.floor(Math.random() * COLORS.length)];
+
+            me = {
+                uid: myUid, name: name,
+                x: Math.random() * (MAP_SIZE - 200) + 100, y: Math.random() * (MAP_SIZE - 200) + 100,
+                vx: 0, vy: 0, 
+                hp: BASE_HP, maxHp: BASE_HP,
+                weapon: { icon: randomWeapon.icon, name: randomWeapon.name, damage: BASE_DAMAGE, angle: 0, count: 1 },
+                evolution: 0, 
+                color: randomColor, score: 0, items: [], status: 'alive',
+                invincibleUntil: Date.now() + 2000, giantUntil: 0, 
+                killedBy: null, lostDamage: 0, deathId: null,
+                joinedAt: Date.now(), lastActive: Date.now(), isNpc: false
+            };
+
+            document.getElementById('login-screen').style.display = 'none';
+            setupNetworkListeners();
+            setupInput();
+            requestAnimationFrame(gameLoop);
+            setInterval(syncToServer, 300); 
+
+            // 최초 생성 (병합 옵션 적용)
+            setDoc(doc(playersRef, myUid), me, { merge: true }).catch(e => {
+                console.error("서버 데이터 생성 지연 발생:", e);
+            });
+        }
+
+        // ==============================================================
+        // ✨ 진화 & 파티클 & 스케일링 핵심 함수 ✨
+        // ==============================================================
+        function getWeaponScale(damage) {
+            return 1 + Math.sqrt(Math.max(0, damage - 5)) / 20; 
+        }
+
+        function checkAndApplyEvolution(p, isLocalUser = false) {
+            let newEvo = p.evolution || 0;
+            const dmg = p.weapon.damage || 0;
+            
+            if (dmg >= 800) newEvo = 6;
+            else if (dmg >= 400) newEvo = 5;
+            else if (dmg >= 200) newEvo = 4;
+            else if (dmg >= 150) newEvo = 3;
+            else if (dmg >= 100) newEvo = 2;
+            else if (dmg >= 50) newEvo = 1;
+
+            if (newEvo > (p.evolution || 0)) {
+                p.evolution = newEvo;
+                if (!p.isBoss) {
+                    const tierWeapons = EVOLUTION_TIERS[newEvo];
+                    const newWep = tierWeapons[Math.floor(Math.random() * tierWeapons.length)];
+                    p.weapon.icon = newWep.icon;
+                    p.weapon.name = newWep.name;
+                }
+                
+                if (isLocalUser) {
+                    showFloatingText(p.x, p.y - 80, "✨환골탈태!✨", "#9F7AEA");
+                    SFX.evo();
+                    createParticles(p.x, p.y, "#9F7AEA", 50); 
+                }
+                return true;
+            }
+            return false;
+        }
+
+        function createParticles(x, y, color, count) {
+            for(let i=0; i<count; i++) {
+                particles.push({
+                    x: x, y: y,
+                    vx: (Math.random()-0.5)*800, vy: (Math.random()-0.5)*800,
+                    life: 1.0, color: color
+                });
+            }
+        }
+        // ==============================================================
+
+        function setupNetworkListeners() {
+            onSnapshot(playersRef, (snapshot) => {
+                const currentPlayers = {};
+                let oldestJoin = Infinity;
+                let potentialHost = null;
+                const now = Date.now();
+
+                snapshot.forEach(docSnap => {
+                    const data = docSnap.data();
+                    if (!data) return;
+
+                    // 🌟 유령 플레이어 완벽 차단 로직 (로컬 타이머 교차 검증) 🌟
+                    if (!data.isNpc) {
+                        if (!playerLastActiveTimes[data.uid]) {
+                            playerLastActiveTimes[data.uid] = { serverVal: data.lastActive, localTime: now };
+                        } else if (playerLastActiveTimes[data.uid].serverVal !== data.lastActive) {
+                            playerLastActiveTimes[data.uid] = { serverVal: data.lastActive, localTime: now };
+                        }
+
+                        // 30초 동안 움직임(통신)이 없으면 유령으로 취급하여 표시하지 않음
+                        if (now - playerLastActiveTimes[data.uid].localTime > 30000) {
+                            if (isHost && data.uid !== myUid) {
+                                deleteDoc(doc(playersRef, data.uid)).catch(()=>{});
+                            }
+                            return; 
+                        }
+                    }
+
+                    if (otherPlayers[data.uid]) {
+                        data.targetX = data.x;
+                        data.targetY = data.y;
+                        data.x = otherPlayers[data.uid].x; 
+                        data.y = otherPlayers[data.uid].y;
+                        if (data.weapon && otherPlayers[data.uid].weapon) {
+                            data.weapon.angle = otherPlayers[data.uid].weapon.angle;
+                        }
+                    } else {
+                        data.targetX = data.x;
+                        data.targetY = data.y;
+                    }
+
+                    currentPlayers[data.uid] = data;
+                    
+                    if (!data.isNpc && data.joinedAt < oldestJoin) {
+                        oldestJoin = data.joinedAt;
+                        potentialHost = data.uid;
+                    }
+
+                    if (data.uid === myUid && me && me.status === 'alive' && data.status === 'dead') {
+                        me.hp = 0; me.status = 'dead';
+                        me.killedBy = data.killedBy; me.deathId = data.deathId;
+                        
+                        document.getElementById('death-msg').innerText = `체력이 모두 소진되어 패배했습니다!`;
+                        document.getElementById('death-screen').style.display = 'flex';
+                        let countdown = 3;
+                        document.getElementById('respawn-timer').innerText = countdown;
+                        const respawnInterval = setInterval(() => {
+                            countdown--;
+                            document.getElementById('respawn-timer').innerText = countdown;
+                            if (countdown <= 0) { clearInterval(respawnInterval); respawn(); }
+                        }, 1000);
+                    }
+                });
+
+                otherPlayers = currentPlayers;
+                isHost = (potentialHost === myUid);
+                updateLeaderboard();
+            });
+
+            onSnapshot(itemsRef, (snapshot) => {
+                const currentItems = {};
+                snapshot.forEach(docSnap => { currentItems[docSnap.id] = docSnap.data(); });
+                gameItems = currentItems;
+            });
+        }
+
+        function syncToServer() {
+            if (!me) return;
+            me.lastActive = Date.now(); 
+            
+            // 🌟 updateDoc 대신 setDoc 병합 사용: 강제로 데이터 부활 🌟
+            setDoc(doc(playersRef, myUid), {
+                x: me.x, y: me.y,
+                'weapon.angle': me.weapon.angle, 'weapon.count': me.weapon.count,
+                hp: me.hp, score: me.score, 'weapon.damage': me.weapon.damage,
+                items: me.items, status: me.status,
+                evolution: me.evolution,
+                'weapon.icon': me.weapon.icon, 'weapon.name': me.weapon.name,
+                invincibleUntil: me.invincibleUntil, giantUntil: me.giantUntil || 0,
+                killedBy: me.killedBy, deathId: me.deathId, lostDamage: me.lostDamage,
+                lastActive: me.lastActive 
+            }, { merge: true }).catch(e => console.error("Sync error", e));
+            
+            if (isHost && me.status === 'alive') { manageNPCs(); manageItems(); }
+        }
+
+        function setupInput() {
+            window.addEventListener('keydown', (e) => {
+                if (keys.hasOwnProperty(e.code)) keys[e.code] = true;
+                const itemKeys = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5'];
+                const idx = itemKeys.indexOf(e.code);
+                if (idx !== -1 && me && me.status === 'alive') useItem(idx);
+            });
+            window.addEventListener('keyup', (e) => { if (keys.hasOwnProperty(e.code)) keys[e.code] = false; });
+        }
+
+        function useItem(index) {
+            if (index >= me.items.length) return;
+            const itemType = me.items[index];
+            me.items.splice(index, 1); 
+            SFX.item(); 
+
+            if (itemType === 'heal') {
+                me.hp = Math.min(me.hp + 15, me.maxHp);
+                showFloatingText(me.x, me.y - 40, "+15 체력!", "#FC8181");
+            } else if (itemType === 'upgrade') {
+                me.weapon.damage += 3;
+                showFloatingText(me.x, me.y - 40, "데미지 +3!", "#F6E05E");
+                checkAndApplyEvolution(me, true); 
+            } else if (itemType === 'shield') {
+                me.invincibleUntil = Date.now() + 3000;
+                showFloatingText(me.x, me.y - 40, "3초 무적!", "#63B3ED");
+            } else if (itemType === 'weapon_box') {
+                me.weapon.count = Math.min(me.weapon.count + 1, MAX_WEAPONS);
+                showFloatingText(me.x, me.y - 40, "무기 장착!", "#9F7AEA");
+            } else if (itemType === 'star') { 
+                me.invincibleUntil = Date.now() + 5000;
+                me.giantUntil = Date.now() + 5000;
+                SFX.evo();
+                createParticles(me.x, me.y, "#FAF089", 30);
+                showFloatingText(me.x, me.y - 60, "⭐무쌍 거대화!⭐", "#FAF089");
+            }
+            updateInventoryUI();
+        }
+
+        let lastTime = performance.now();
+        function gameLoop(currentTime) {
+            try {
+                const dt = (currentTime - lastTime) / 1000;
+                lastTime = currentTime;
+
+                if (me && me.status === 'alive') {
+                    updateMovement(dt);
+                    updateWeaponRotation(dt);
+                    checkCollisions();
+                    checkItemPickups();
+                    checkKillRewards();
+                }
+                draw(dt);
+            } catch (e) {
+                console.error("Game Loop 에러:", e);
+            }
+            requestAnimationFrame(gameLoop);
+        }
+
+        function updateMovement(dt) {
+            let currentSpeed = 250; 
+            if (me.giantUntil > Date.now()) currentSpeed = 400; 
+
+            let dx = 0; let dy = 0;
+            if (keys.ArrowUp) dy -= 1; if (keys.ArrowDown) dy += 1;
+            if (keys.ArrowLeft) dx -= 1; if (keys.ArrowRight) dx += 1;
+
+            if (dx !== 0 && dy !== 0) {
+                const length = Math.sqrt(dx*dx + dy*dy);
+                dx /= length; dy /= length;
+            }
+
+            me.x += dx * currentSpeed * dt; me.y += dy * currentSpeed * dt;
+
+            if (me.vx !== 0 || me.vy !== 0) {
+                me.x += me.vx * dt; me.y += me.vy * dt;
+                me.vx *= 0.85; me.vy *= 0.85;
+                if (Math.abs(me.vx) < 5) me.vx = 0; if (Math.abs(me.vy) < 5) me.vy = 0;
+            }
+
+            me.x = Math.max(20, Math.min(MAP_SIZE - 20, me.x));
+            me.y = Math.max(20, Math.min(MAP_SIZE - 20, me.y));
+
+            for (const uid in otherPlayers) {
+                let p = otherPlayers[uid];
+                if (p.targetX !== undefined && p.targetY !== undefined) {
+                    p.x += (p.targetX - p.x) * 10 * dt;
+                    p.y += (p.targetY - p.y) * 10 * dt;
+                }
+            }
+        }
+
+        function updateWeaponRotation(dt) { 
+            const scale = getWeaponScale(me.weapon.damage);
+            const giantSpeed = me.giantUntil > Date.now() ? 2 : 1; 
+            me.weapon.angle += (3 / scale) * giantSpeed * dt; 
+
+            for (const uid in otherPlayers) {
+                let p = otherPlayers[uid];
+                if (p.weapon && p.status === 'alive') {
+                    const pScale = getWeaponScale(p.weapon.damage);
+                    const pGiantSpeed = (p.giantUntil || 0) > Date.now() ? 2 : 1; 
+                    p.weapon.angle += (3 / pScale) * pGiantSpeed * dt; 
+                }
+            }
+        }
+
+        function getWeaponPositions(p) {
+            const positions = [];
+            if (!p.weapon || p.weapon.count <= 0) return positions;
+            
+            const isGiant = (p.giantUntil || 0) > Date.now();
+            const giantScale = isGiant ? 1.5 : 1; 
+            const scale = getWeaponScale(p.weapon.damage) * giantScale;
+
+            const orbitRadius = 60 * scale; 
+            const angleStep = (Math.PI * 2) / p.weapon.count;
+            
+            for (let i = 0; i < p.weapon.count; i++) {
+                const currentAngle = p.weapon.angle + (i * angleStep);
+                positions.push({ x: p.x + Math.cos(currentAngle) * orbitRadius, y: p.y + Math.sin(currentAngle) * orbitRadius });
+            }
+            return positions;
+        }
+
+        function checkCollisions() {
+            const now = Date.now();
+            
+            const myGiant = me.giantUntil > now;
+            const myScale = getWeaponScale(me.weapon.damage) * (myGiant ? 1.5 : 1);
+            const myWeaponRadius = 15 * myScale; 
+            const myBodyRadius = myGiant ? 40 : 20;
+
+            const myWeapons = getWeaponPositions(me);
+            let gotHitBody = false;
+
+            for (const key in otherPlayers) {
+                if (key === myUid) continue;
+                const other = otherPlayers[key];
+                if (!other || other.status !== 'alive') continue;
+
+                const otherGiant = (other.giantUntil || 0) > now;
+                const otherScale = getWeaponScale(other.weapon?.damage || 5) * (otherGiant ? 1.5 : 1);
+                const otherWeaponRadius = 15 * otherScale;
+
+                const otherWeapons = getWeaponPositions(other);
+
+                if (myWeapons.length > 0 && otherWeapons.length > 0) {
+                    let weaponClashed = false;
+                    for (let mw of myWeapons) {
+                        for (let ow of otherWeapons) {
+                            if (!mw || !ow) continue;
+                            const dist = Math.hypot(ow.x - mw.x, ow.y - mw.y);
+                            if (dist < myWeaponRadius + otherWeaponRadius) {
+                                const clashId = myUid < key ? `${myUid}_${key}` : `${key}_${myUid}`;
+                                if (!weaponClashCooldowns[clashId] || now > weaponClashCooldowns[clashId]) {
+                                    handleWeaponClash(key, other, mw, ow);
+                                    weaponClashCooldowns[clashId] = now + 1000; 
+                                    weaponClashed = true;
+                                }
+                            }
+                            if(weaponClashed) break;
+                        }
+                        if(weaponClashed) break;
+                    }
+                }
+
+                if (now < me.invincibleUntil) continue; 
+
+                for (let ow of otherWeapons) {
+                    if (!ow) continue;
+                    const distToBody = Math.hypot(ow.x - me.x, ow.y - me.y);
+                    if (distToBody < otherWeaponRadius + myBodyRadius) {
+                        const dmgAmount = Math.floor(BASE_HP * 0.2); 
+                        takeDamage(dmgAmount, other.uid, other.name);
+                        gotHitBody = true;
+                        break;
+                    }
+                }
+            }
+            if (gotHitBody) me.invincibleUntil = now + 500;
+        }
+
+        function handleWeaponClash(otherId, other, myWeaponPos, otherWeaponPos) {
+            SFX.clash(); 
+            
+            const angle = Math.atan2(me.y - other.y, me.x - other.x);
+            me.vx = Math.cos(angle) * 600; me.vy = Math.sin(angle) * 600;
+
+            const clashX = (myWeaponPos.x + otherWeaponPos.x) / 2;
+            const clashY = (myWeaponPos.y + otherWeaponPos.y) / 2;
+            showFloatingText(clashX, clashY, "💥 챙!", "#FFF");
+            
+            screenShake = 15; 
+            createParticles(clashX, clashY, "#FFF", 10);
+
+            const myDmg = me.weapon.damage || 0; 
+            const otherDmg = (other.weapon && other.weapon.damage) ? other.weapon.damage : 0;
+
+            if (myDmg > otherDmg || (me.giantUntil > Date.now())) { 
+                me.weapon.count = Math.min(me.weapon.count + 1, MAX_WEAPONS);
+                me.weapon.damage += 1; 
+                showFloatingText(me.x, me.y - 40, "무기 강탈 & 강화!", "#48BB78");
+                checkAndApplyEvolution(me, true); 
+                
+                const newCount = Math.max((other.weapon.count || 0) - 1, 0);
+                updateDoc(doc(playersRef, otherId), { 'weapon.count': newCount }).catch(()=>{});
+            } else if (myDmg < otherDmg) {
+                me.weapon.count = Math.max(me.weapon.count - 1, 0);
+                showFloatingText(me.x, me.y - 40, "무기 파괴됨!", "#F56565");
+                me.invincibleUntil = Date.now() + 500;
+                
+                if (other.isNpc) {
+                    const newCount = Math.min((other.weapon.count||0) + 1, MAX_WEAPONS);
+                    const newDmg = (other.weapon.damage||5) + 1;
+                    updateDoc(doc(playersRef, otherId), { 'weapon.count': newCount, 'weapon.damage': newDmg }).catch(()=>{});
+                }
+            } else {
+                showFloatingText(me.x, me.y - 40, "무승부!", "#A0AEC0");
+            }
+        }
+
+        function takeDamage(damage, attackerUid, attackerName) {
+            SFX.hit(); 
+            me.hp -= damage;
+            showFloatingText(me.x, me.y, `-${damage}`, 'red');
+
+            if (me.hp <= 0) {
+                me.hp = 0; me.status = 'dead';
+                me.killedBy = attackerUid; me.deathId = Date.now().toString() + myUid;
+                me.lostDamage = me.weapon.damage; 
+
+                document.getElementById('death-msg').innerText = `${attackerName} 님에게 당했습니다!`;
+                document.getElementById('death-screen').style.display = 'flex';
+                
+                let countdown = 3; document.getElementById('respawn-timer').innerText = countdown;
+                const respawnInterval = setInterval(() => {
+                    countdown--; document.getElementById('respawn-timer').innerText = countdown;
+                    if (countdown <= 0) { clearInterval(respawnInterval); respawn(); }
+                }, 1000);
+            }
+        }
+
+        function checkKillRewards() {
+            for (const key in otherPlayers) {
+                const other = otherPlayers[key];
+                if (other && other.status === 'dead' && other.killedBy === myUid && !claimedKills.has(other.deathId)) {
+                    claimedKills.add(other.deathId);
+                    SFX.explosion(); 
+                    
+                    screenShake = 30; 
+                    createParticles(other.x || me.x, other.y || me.y, "#F56565", 40);
+
+                    me.score += 1;
+                    const absorbedPower = Math.ceil((other.lostDamage || 0) / 2);
+                    if (absorbedPower > 0) {
+                        me.weapon.damage += absorbedPower; 
+                    }
+                    me.hp = me.maxHp; 
+                    
+                    showFloatingText(me.x, me.y - 60, "상대 처치! 체력 회복!", "#48BB78");
+                    if(absorbedPower > 0) {
+                        showFloatingText(me.x, me.y - 80, `파워 흡수 +${absorbedPower}!`, "#F6E05E");
+                        checkAndApplyEvolution(me, true); 
+                    }
+                }
+            }
+        }
+
+        function respawn() {
+            document.getElementById('death-screen').style.display = 'none';
+            me.hp = BASE_HP; me.maxHp = BASE_HP; me.vx = 0; me.vy = 0;
+            me.weapon.damage = BASE_DAMAGE; me.weapon.count = 1; me.evolution = 0;
+            me.giantUntil = 0;
+            const rWep = WEAPONS[Math.floor(Math.random() * WEAPONS.length)];
+            me.weapon.icon = rWep.icon; me.weapon.name = rWep.name;
+            me.x = Math.random() * (MAP_SIZE - 200) + 100; me.y = Math.random() * (MAP_SIZE - 200) + 100;
+            me.items = []; me.status = 'alive'; me.invincibleUntil = Date.now() + 2000; 
+            updateInventoryUI();
+        }
+
+        function checkItemPickups() {
+            if (me.items.length >= 5) return; 
+            for (const itemId in gameItems) {
+                const item = gameItems[itemId];
+                if (!item) continue;
+                const dist = Math.hypot(item.x - me.x, item.y - me.y);
+                if (dist < 30) {
+                    me.items.push(item.type);
+                    delete gameItems[itemId]; deleteDoc(doc(itemsRef, itemId)).catch(()=>{}); 
+                    updateInventoryUI();
+                    SFX.item();
+                    showFloatingText(me.x, me.y, "+아이템", "#A0AEC0");
+                    break; 
+                }
+            }
+        }
+
+        function updateInventoryUI() {
+            for (let i = 0; i < 5; i++) {
+                const slot = document.getElementById(`slot-${i+1}`).querySelector('span');
+                if (i < me.items.length) {
+                    const typeObj = ITEM_TYPES.find(t => t.id === me.items[i]);
+                    slot.innerText = typeObj ? typeObj.icon : '?';
+                } else { slot.innerText = ''; }
+            }
+        }
+
+        let lastItemSpawn = 0;
+        function manageItems() {
+            const maxItems = 15;
+            if (Object.keys(gameItems).length < maxItems && Date.now() - lastItemSpawn > 3000) {
+                const itemType = ITEM_TYPES[Math.floor(Math.random() * ITEM_TYPES.length)].id;
+                const newId = 'item_' + Date.now() + Math.floor(Math.random()*1000);
+                setDoc(doc(itemsRef, newId), {
+                    x: Math.random() * (MAP_SIZE - 200) + 100, y: Math.random() * (MAP_SIZE - 200) + 100, type: itemType
+                }).catch(()=>{});
+                lastItemSpawn = Date.now();
+            }
+        }
+
+        let npcInitialized = false;
+        let targetNpcCount = 6; 
+
+        function manageNPCs() {
+            if (!npcInitialized) { npcInitialized = true; }
+
+            let npcCount = 0;
+            for(let k in otherPlayers) { if(otherPlayers[k].isNpc) npcCount++; }
+            
+            if (npcCount < targetNpcCount) {
+                for(let i = npcCount; i < targetNpcCount; i++) {
+                    const npcId = 'npc_' + i;
+                    const isBoss = (i === 0); 
+                    const rWep = isBoss ? { icon: '😈', name: '악마' } : WEAPONS[Math.floor(Math.random() * WEAPONS.length)];
+                    setDoc(doc(playersRef, npcId), {
+                        uid: npcId, name: isBoss ? '🔥 대왕 봇 🔥' : '컴퓨터 봇 ' + i, 
+                        x: Math.random() * MAP_SIZE, y: Math.random() * MAP_SIZE,
+                        hp: isBoss ? 150 : 20, maxHp: isBoss ? 150 : 20, 
+                        weapon: { icon: rWep.icon, name: rWep.name, damage: isBoss ? 15 : 3, angle: Math.random()*Math.PI*2, count: isBoss ? 6 : 2 }, 
+                        evolution: 0, giantUntil: 0,
+                        color: isBoss ? '#E53E3E' : '#A0AEC0', 
+                        score: 0, items: [], status: 'alive', invincibleUntil: 0, joinedAt: Date.now(), lastActive: Date.now(), isNpc: true, isBoss: isBoss,
+                        tx: Math.random() * MAP_SIZE, ty: Math.random() * MAP_SIZE
+                    }).catch(()=>{});
+                }
+            }
+
+            for (const key in otherPlayers) {
+                if (key.startsWith('npc_')) {
+                    const npc = otherPlayers[key];
+                    
+                    if (npc.status === 'alive' && npc.weapon && npc.weapon.count === 0) {
+                        if (!npcUnarmedTimers[key]) npcUnarmedTimers[key] = Date.now();
+                        if (Date.now() - npcUnarmedTimers[key] > 5000) {
+                            updateDoc(doc(playersRef, key), {
+                                status: 'dead', hp: 0, killedBy: 'system', deathId: Date.now().toString() + key
+                            }).catch(()=>{});
+                            delete npcUnarmedTimers[key];
+                            continue;
+                        }
+                    } else {
+                        if (npcUnarmedTimers[key]) delete npcUnarmedTimers[key];
+                    }
+
+                    if (npc.status === 'dead') {
+                        if (!npcRespawnTimers[key]) npcRespawnTimers[key] = Date.now();
+                        if (Date.now() - npcRespawnTimers[key] > 5000) {
+                            const isBoss = npc.isBoss;
+                            const rWep = isBoss ? { icon: '😈', name: '악마' } : WEAPONS[Math.floor(Math.random() * WEAPONS.length)];
+                            updateDoc(doc(playersRef, key), {
+                                status: 'alive', hp: isBoss ? 150 : 20, evolution: 0, giantUntil: 0,
+                                'weapon.damage': isBoss ? 15 : 3, 'weapon.count': isBoss ? 6 : 2,
+                                'weapon.icon': rWep.icon, 'weapon.name': rWep.name,
+                                x: Math.random() * MAP_SIZE, y: Math.random() * MAP_SIZE
+                            }).catch(()=>{});
+                            delete npcRespawnTimers[key];
+                        }
+                        continue;
+                    } else {
+                        if (npcRespawnTimers[key]) delete npcRespawnTimers[key];
+                    }
+
+                    let dx = npc.tx - npc.x; let dy = npc.ty - npc.y; let dist = Math.hypot(dx, dy);
+                    let newX = npc.x; let newY = npc.y;
+
+                    if (dist < 50) {
+                        updateDoc(doc(playersRef, key), { tx: Math.random() * MAP_SIZE, ty: Math.random() * MAP_SIZE, lastActive: Date.now() }).catch(()=>{});
+                    } else {
+                        let speed = npc.isBoss ? 200 : 100;
+                        if((npc.giantUntil||0) > Date.now()) speed += 100; 
+                        
+                        newX = npc.x + (dx/dist)*speed*0.1;
+                        newY = npc.y + (dy/dist)*speed*0.1;
+                        
+                        let updates = { 
+                            x: newX, y: newY, 
+                            lastActive: Date.now()
+                        };
+
+                        if (checkAndApplyEvolution(npc, false)) {
+                            updates['evolution'] = npc.evolution;
+                            updates['weapon.icon'] = npc.weapon.icon;
+                            updates['weapon.name'] = npc.weapon.name;
+                        }
+
+                        for (let itemId in gameItems) {
+                            const item = gameItems[itemId];
+                            if (Math.hypot(item.x - newX, item.y - newY) < 30) {
+                                if (!npc.items) npc.items = [];
+                                if (npc.items.length < 5) {
+                                    npc.items.push(item.type);
+                                    updates.items = npc.items;
+                                    deleteDoc(doc(itemsRef, itemId)).catch(()=>{});
+                                    delete gameItems[itemId];
+                                    break; 
+                                }
+                            }
+                        }
+
+                        if (npc.items && npc.items.length > 0) {
+                            let playerNearby = false;
+                            if (me && me.status === 'alive' && Math.hypot(me.x - newX, me.y - newY) < 400) {
+                                playerNearby = true;
+                            }
+                            if (!playerNearby) {
+                                for (let pid in otherPlayers) {
+                                    let p = otherPlayers[pid];
+                                    if (!p.isNpc && p.status === 'alive' && Math.hypot(p.x - newX, p.y - newY) < 400) {
+                                        playerNearby = true; break;
+                                    }
+                                }
+                            }
+
+                            if (playerNearby) {
+                                const usedItem = npc.items.shift();
+                                updates.items = npc.items;
+                                if (usedItem === 'heal') updates.hp = Math.min((npc.hp||0) + 15, npc.maxHp||30);
+                                if (usedItem === 'upgrade') updates['weapon.damage'] = (npc.weapon.damage||5) + 3;
+                                if (usedItem === 'shield') updates.invincibleUntil = Date.now() + 3000;
+                                if (usedItem === 'weapon_box') updates['weapon.count'] = Math.min((npc.weapon.count||0) + 1, MAX_WEAPONS);
+                                if (usedItem === 'star') {
+                                    updates.invincibleUntil = Date.now() + 5000;
+                                    updates.giantUntil = Date.now() + 5000;
+                                }
+                            }
+                        }
+
+                        updateDoc(doc(playersRef, key), updates).catch(()=>{});
+                    }
+                }
+            }
+        }
+
+        function draw(dt) {
+            if (me) {
+                let shakeX = 0; let shakeY = 0;
+                if (screenShake > 0) {
+                    shakeX = (Math.random() - 0.5) * screenShake;
+                    shakeY = (Math.random() - 0.5) * screenShake;
+                    screenShake -= 50 * dt; 
+                    if (screenShake < 0) screenShake = 0;
+                }
+
+                camera.x += (me.x - canvas.width / 2 - camera.x) * 0.1;
+                camera.y += (me.y - canvas.height / 2 - camera.y) * 0.1;
+
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.save();
+                ctx.translate(-camera.x + shakeX, -camera.y + shakeY);
+
+                ctx.strokeStyle = '#2D3748'; ctx.lineWidth = 1;
+                const step = 100;
+                const startX = Math.floor(camera.x / step) * step; const startY = Math.floor(camera.y / step) * step;
+                for (let x = startX; x < startX + canvas.width + step; x += step) {
+                    ctx.beginPath(); ctx.moveTo(x, camera.y); ctx.lineTo(x, camera.y + canvas.height); ctx.stroke();
+                }
+                for (let y = startY; y < startY + canvas.height + step; y += step) {
+                    ctx.beginPath(); ctx.moveTo(camera.x, y); ctx.lineTo(camera.x + canvas.width, y); ctx.stroke();
+                }
+
+                ctx.strokeStyle = '#E2E8F0'; ctx.lineWidth = 5; ctx.strokeRect(0, 0, MAP_SIZE, MAP_SIZE);
+
+                for(let i = particles.length - 1; i >= 0; i--) {
+                    let p = particles[i];
+                    p.x += p.vx * dt; p.y += p.vy * dt;
+                    p.life -= dt * 1.5;
+                    if(p.life <= 0) particles.splice(i, 1);
+                    else {
+                        ctx.globalAlpha = p.life;
+                        ctx.fillStyle = p.color;
+                        ctx.beginPath(); ctx.arc(p.x, p.y, 6, 0, Math.PI*2); ctx.fill();
+                        ctx.globalAlpha = 1.0;
+                    }
+                }
+
+                for (const id in gameItems) {
+                    const item = gameItems[id];
+                    const typeObj = ITEM_TYPES.find(t => t.id === item.type);
+                    if (typeObj) {
+                        ctx.font = "24px Arial"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+                        ctx.shadowBlur = 15; ctx.shadowColor = typeObj.color;
+                        ctx.fillText(typeObj.icon, item.x, item.y); ctx.shadowBlur = 0; 
+                    }
+                }
+
+                for (const key in otherPlayers) {
+                    if (key === myUid) continue;
+                    drawPlayer(otherPlayers[key]);
+                }
+
+                if (me && me.status === 'alive') drawPlayer(me, true);
+
+                ctx.restore();
+                drawMinimap();
+            }
+        }
+
+        function drawMinimap() {
+            const mSize = 150; const mMargin = 20; const mX = mMargin; const mY = canvas.height - mSize - mMargin; 
+            const scale = mSize / MAP_SIZE; 
+
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)'; ctx.fillRect(mX, mY, mSize, mSize);
+            ctx.strokeStyle = '#4A5568'; ctx.lineWidth = 2; ctx.strokeRect(mX, mY, mSize, mSize);
+
+            for (const key in otherPlayers) {
+                const p = otherPlayers[key];
+                if (p && p.status === 'alive') {
+                    ctx.fillStyle = p.isBoss ? '#E53E3E' : (p.isNpc ? '#A0AEC0' : '#F56565');
+                    ctx.beginPath(); ctx.arc(mX + p.x * scale, mY + p.y * scale, p.isBoss ? 4 : 2, 0, Math.PI * 2); ctx.fill();
+                }
+            }
+
+            if (me && me.status === 'alive') {
+                ctx.fillStyle = '#48BB78';
+                ctx.beginPath(); ctx.arc(mX + me.x * scale, mY + me.y * scale, 3, 0, Math.PI * 2); ctx.fill();
+            }
+        }
+
+        function drawPlayer(p, isMe = false) {
+            if (!p || p.status !== 'alive') return;
+
+            const isGiant = (p.giantUntil || 0) > Date.now();
+            const bodyRadius = isGiant ? 40 : 20; 
+
+            if (p.invincibleUntil > Date.now()) {
+                ctx.beginPath(); ctx.arc(p.x, p.y, bodyRadius + 10, 0, Math.PI * 2);
+                ctx.fillStyle = isGiant ? 'rgba(250, 240, 137, 0.5)' : (isMe ? 'rgba(99, 179, 237, 0.4)' : 'rgba(236, 201, 75, 0.4)'); 
+                ctx.fill();
+            }
+
+            ctx.beginPath(); ctx.arc(p.x, p.y, bodyRadius, 0, Math.PI * 2);
+            ctx.fillStyle = p.color || '#FFF'; ctx.fill();
+            if (isMe) { ctx.lineWidth = 3; ctx.strokeStyle = '#FFF'; ctx.stroke(); }
+            
+            ctx.textAlign = "center"; ctx.fillStyle = "white"; 
+            ctx.font = p.isBoss ? "bold 16px Arial" : (isMe ? "bold 14px Arial" : "12px Arial");
+            
+            let nameDisplay = p.name;
+            if(p.evolution === 1) nameDisplay = "⚡ " + p.name + " ⚡";
+            if(p.evolution === 2) nameDisplay = "🔥 " + p.name + " 🔥";
+            if(p.evolution >= 3) nameDisplay = "👑 " + p.name + " 👑";
+            if(isGiant) nameDisplay = "🌟 " + nameDisplay + " 🌟";
+
+            ctx.fillText(nameDisplay, p.x, p.y - (bodyRadius + 15));
+            
+            const hpRatio = Math.max(0, p.hp / Math.max(30, p.maxHp));
+            ctx.fillStyle = "red"; ctx.fillRect(p.x - 20, p.y - (bodyRadius + 8), 40, 6);
+            ctx.fillStyle = "#48BB78"; ctx.fillRect(p.x - 20, p.y - (bodyRadius + 8), 40 * hpRatio, 6);
+
+            const wCount = (p.weapon && p.weapon.count) ? p.weapon.count : 0;
+            
+            const scale = getWeaponScale(p.weapon?.damage || 5) * (isGiant ? 1.5 : 1);
+            const orbitRadius = 60 * scale; 
+            const baseFontSize = p.isBoss ? 34 : 28;
+            const scaledFontSize = Math.floor(baseFontSize * scale);
+
+            if (wCount > 0) {
+                ctx.beginPath(); ctx.arc(p.x, p.y, orbitRadius, 0, Math.PI * 2);
+                ctx.strokeStyle = isGiant ? 'rgba(250, 240, 137, 0.4)' : 'rgba(255, 255, 255, 0.1)'; 
+                ctx.lineWidth = isGiant ? 3 : 1; ctx.stroke();
+
+                const angleStep = (Math.PI * 2) / wCount;
+                for (let i = 0; i < wCount; i++) {
+                    const currentAngle = p.weapon.angle + (i * angleStep);
+                    const wX = p.x + Math.cos(currentAngle) * orbitRadius;
+                    const wY = p.y + Math.sin(currentAngle) * orbitRadius;
+
+                    ctx.font = `${scaledFontSize}px Arial`; 
+                    ctx.textBaseline = "middle"; ctx.fillText(p.weapon.icon, wX, wY);
+                    
+                    if (i === 0) {
+                        ctx.font = "bold 12px Arial"; ctx.fillStyle = "#F6E05E";
+                        ctx.fillText(`ATK:${p.weapon.damage}`, wX, wY + (scaledFontSize/2) + 5);
+                    }
+                }
+            } else {
+                ctx.font = "bold 12px Arial"; ctx.fillStyle = "#F56565";
+                ctx.fillText(`무기 없음!`, p.x, p.y + (bodyRadius + 15));
+            }
+        }
+
+        function updateLeaderboard() {
+            const list = document.getElementById('player-list'); list.innerHTML = '';
+            const sortedPlayers = Object.values(otherPlayers).sort((a, b) => {
+                if (b.score !== a.score) return b.score - a.score; 
+                return (b.weapon?.damage || 0) - (a.weapon?.damage || 0);
+            });
+            if (me) {
+                if (sortedPlayers.findIndex(p => p.uid === myUid) === -1) sortedPlayers.push(me);
+                sortedPlayers.sort((a, b) => {
+                    if (b.score !== a.score) return b.score - a.score; 
+                    return (b.weapon?.damage || 0) - (a.weapon?.damage || 0);
+                });
+            }
+            sortedPlayers.forEach((p, idx) => {
+                let rankIcon = '';
+                if (idx === 0) rankIcon = '🥇'; else if (idx === 1) rankIcon = '🥈'; else if (idx === 2) rankIcon = '🥉';
+                else rankIcon = `<span class="inline-block w-5 text-center text-gray-500">${idx+1}</span>`;
+
+                const li = document.createElement('li');
+                const isMeClass = p.uid === myUid ? 'text-green-400 font-bold' : (p.isBoss ? 'text-red-500 font-bold' : (p.isNpc ? 'text-gray-400' : 'text-white'));
+                const statusStr = p.status === 'dead' ? ' <span class="text-red-500 text-xs">[사망]</span>' : '';
+                const weaponIcon = p.weapon ? p.weapon.icon : '';
+                const weaponCount = p.weapon ? p.weapon.count : 0;
+                const weaponDmg = p.weapon ? p.weapon.damage : 0;
+                
+                li.innerHTML = `${rankIcon} <span class="${isMeClass}">${p.name}</span> ${statusStr} 
+                                <div class="text-xs text-gray-400 ml-6">킬: ${p.score} | 무기: ${weaponIcon}(${weaponCount}개/ATK:${weaponDmg})</div>`;
+                list.appendChild(li);
+            });
+        }
+
+        function showFloatingText(x, y, text, color) {
+            try {
+                const el = document.createElement('div'); el.className = 'effect-text';
+                el.style.color = color; el.innerText = text;
+                el.style.left = (x - camera.x) + 'px'; el.style.top = (y - camera.y) + 'px';
+                document.getElementById('floating-texts').appendChild(el);
+                setTimeout(() => { el.remove(); }, 1000);
+            } catch(e){}
+        }
+    </script>
+</body>
+</html>
