@@ -359,7 +359,7 @@
             requestAnimationFrame(gameLoop);
             
             if (syncTimerId) clearInterval(syncTimerId);
-            syncTimerId = setInterval(syncToServer, 400); 
+            syncTimerId = setInterval(syncToServer, 1000); 
         }
 
         // ==============================================================
@@ -835,7 +835,7 @@
         let lastItemSpawn = 0;
         function manageItems() {
             const maxItems = 15;
-            if (Object.keys(gameItems).length < maxItems && Date.now() - lastItemSpawn > 3000) {
+            if (Object.keys(gameItems).length < maxItems && Date.now() - lastItemSpawn > 5000) {
                 const itemType = ITEM_TYPES[Math.floor(Math.random() * ITEM_TYPES.length)].id;
                 const newId = 'item_' + Date.now() + Math.floor(Math.random()*1000);
                 setDoc(doc(itemsRef, newId), {
@@ -846,7 +846,7 @@
         }
 
         let npcInitialized = false;
-        let targetNpcCount = 6; 
+        let targetNpcCount = 3; 
 
         function manageNPCs() {
             if (!npcInitialized) { npcInitialized = true; }
