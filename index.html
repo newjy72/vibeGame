@@ -65,31 +65,30 @@
         // 🔥 선생님의 Firebase 설정값으로 아래 내용을 덮어쓰세요! 🔥
         // =====================================================================
         let firebaseConfig = {
-            apiKey: "AIzaSyA0sbjPjdUReOwWdCRGBjKdQ--YmHBF1g8",
-            authDomain: "orbit-game-class.firebaseapp.com",
-            projectId: "orbit-game-class",
-            storageBucket: "orbit-game-class.firebasestorage.app",
-            messagingSenderId: "47770827555",
-            appId: "1:47770827555:web:c122c3b23587257ed9aa96"
+            apiKey: "여기에_선생님의_API_KEY_입력",
+            authDomain: "여기에_선생님의_AUTH_DOMAIN_입력",
+            projectId: "여기에_선생님의_PROJECT_ID_입력",
+            storageBucket: "여기에_선생님의_STORAGE_BUCKET_입력",
+            messagingSenderId: "여기에_선생님의_SENDER_ID_입력",
+            appId: "여기에_선생님의_APP_ID_입력"
         };
         let gameRoomId = "my-school-class-room-1";
         // =====================================================================
 
-        if (typeof __firebase_config !== 'undefined') firebaseConfig = JSON.parse(__firebase_config);
-        if (typeof __app_id !== 'undefined') gameRoomId = __app_id;
+        try {
+            if (typeof __firebase_config !== 'undefined' && __firebase_config) firebaseConfig = JSON.parse(__firebase_config);
+            if (typeof __app_id !== 'undefined' && __app_id) gameRoomId = __app_id;
+        } catch (e) {
+            console.error("환경 변수 로드 에러:", e);
+        }
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
 
-        let playersRef, itemsRef;
-        if (typeof __app_id !== 'undefined') {
-            playersRef = collection(db, 'artifacts', gameRoomId, 'public', 'data', 'players');
-            itemsRef = collection(db, 'artifacts', gameRoomId, 'public', 'data', 'items');
-        } else {
-            playersRef = collection(db, `games/${gameRoomId}/players`);
-            itemsRef = collection(db, `games/${gameRoomId}/items`);
-        }
+        // Firebase 경로 안정화 규칙 준수
+        const playersRef = collection(db, 'artifacts', gameRoomId, 'public', 'data', 'players');
+        const itemsRef = collection(db, 'artifacts', gameRoomId, 'public', 'data', 'items');
 
         const MAP_SIZE = 3000;
         const BASE_HP = 30;
@@ -109,7 +108,6 @@
 
         const COLORS = ['#F56565', '#ED8936', '#ECC94B', '#48BB78', '#38B2AC', '#4299E1', '#9F7AEA', '#ED64A6'];
         
-        // 🌟 신규 아이템: 무적 거대화 별 추가 🌟
         const ITEM_TYPES = [
             { id: 'heal', icon: '💖', color: '#FC8181', desc: '체력 +15' },
             { id: 'upgrade', icon: '🔥', color: '#F6E05E', desc: '데미지 +3' },
@@ -134,7 +132,6 @@
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
 
-        // 🌟 시각적 효과 변수 (화면 진동 및 파티클) 🌟
         let screenShake = 0;
         let particles = [];
 
@@ -169,7 +166,6 @@
                         const filter = audioCtx.createBiquadFilter();
 
                         osc.type = 'sawtooth';
-                        // 거대화 상태면 BGM도 빠르고 강렬하게!
                         const isGiant = me.giantUntil > Date.now();
                         osc.frequency.value = (notes[noteIdx] / 2) * (isGiant ? 1.5 : 1); 
                         filter.type = 'lowpass';
@@ -241,7 +237,7 @@
                     osc.start(); osc.stop(audioCtx.currentTime + 0.6);
                 } catch(e) {}
             },
-            explosion: () => { // 적 처치 시 굉음
+            explosion: () => {
                 try {
                     if(!audioCtx || audioCtx.state !== 'running') return;
                     const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
@@ -291,42 +287,46 @@
         });
         initAuth();
 
-        async function joinGame() {
-            if (!myUid) return;
+        // 🌟 [핵심 수정] 서버 응답을 기다리지 않고 화면부터 즉시 띄우는 Non-blocking 입장 로직 🌟
+        function joinGame() {
+            if (!myUid || me) return; // 중복 클릭 차단
+            
+            const joinBtn = document.getElementById('join-btn');
+            joinBtn.innerText = "입장 중...";
+            joinBtn.disabled = true;
+
             initAudio(); 
             
-            try {
-                const nameInput = document.getElementById('player-name').value.trim();
-                const name = nameInput || "학생" + Math.floor(Math.random() * 100);
-                const randomWeapon = WEAPONS[Math.floor(Math.random() * WEAPONS.length)];
-                const randomColor = COLORS[Math.floor(Math.random() * COLORS.length)];
+            const nameInput = document.getElementById('player-name').value.trim();
+            const name = nameInput || "학생" + Math.floor(Math.random() * 100);
+            const randomWeapon = WEAPONS[Math.floor(Math.random() * WEAPONS.length)];
+            const randomColor = COLORS[Math.floor(Math.random() * COLORS.length)];
 
-                me = {
-                    uid: myUid, name: name,
-                    x: Math.random() * (MAP_SIZE - 200) + 100, y: Math.random() * (MAP_SIZE - 200) + 100,
-                    vx: 0, vy: 0, 
-                    hp: BASE_HP, maxHp: BASE_HP,
-                    weapon: { icon: randomWeapon.icon, name: randomWeapon.name, damage: BASE_DAMAGE, angle: 0, count: 1 },
-                    evolution: 0, 
-                    color: randomColor, score: 0, items: [], status: 'alive',
-                    invincibleUntil: Date.now() + 2000, giantUntil: 0, // 거대화 타이머 추가
-                    killedBy: null, lostDamage: 0, deathId: null,
-                    joinedAt: Date.now(), lastActive: Date.now(), isNpc: false
-                };
+            me = {
+                uid: myUid, name: name,
+                x: Math.random() * (MAP_SIZE - 200) + 100, y: Math.random() * (MAP_SIZE - 200) + 100,
+                vx: 0, vy: 0, 
+                hp: BASE_HP, maxHp: BASE_HP,
+                weapon: { icon: randomWeapon.icon, name: randomWeapon.name, damage: BASE_DAMAGE, angle: 0, count: 1 },
+                evolution: 0, 
+                color: randomColor, score: 0, items: [], status: 'alive',
+                invincibleUntil: Date.now() + 2000, giantUntil: 0, 
+                killedBy: null, lostDamage: 0, deathId: null,
+                joinedAt: Date.now(), lastActive: Date.now(), isNpc: false
+            };
 
-                await setDoc(doc(playersRef, myUid), me);
-                
-                document.getElementById('login-screen').style.display = 'none';
-                setupNetworkListeners();
-                setupInput();
-                requestAnimationFrame(gameLoop);
-                
-                // 📉 데이터 최적화: 초당 10번(100ms) -> 초당 3.3번(300ms)으로 전송 주기 하향
-                setInterval(syncToServer, 300);
-            } catch (e) {
-                console.error("Join Game Error:", e);
-                alert("게임 시작 중 오류가 발생했습니다: " + e.message);
-            }
+            // 1. 화면 전환부터 즉시 실행하여 멈춤 현상(Freezing) 완벽 차단!
+            document.getElementById('login-screen').style.display = 'none';
+            setupNetworkListeners();
+            setupInput();
+            requestAnimationFrame(gameLoop);
+            setInterval(syncToServer, 300); // 300ms 주기로 데이터 절약 유지
+
+            // 2. 서버 데이터 저장은 백그라운드 비동기로 넘겨서 기다리지 않게 만듦
+            setDoc(doc(playersRef, myUid), me).catch(e => {
+                console.error("서버 데이터 생성 지연 발생:", e);
+                // 지연되더라도 로컬 화면은 계속 부드럽게 돌아가도록 냅둡니다.
+            });
         }
 
         // ==============================================================
@@ -356,7 +356,7 @@
                 if (isLocalUser) {
                     showFloatingText(p.x, p.y - 80, "✨환골탈태!✨", "#9F7AEA");
                     SFX.evo();
-                    createParticles(p.x, p.y, "#9F7AEA", 50); // 진화 파티클
+                    createParticles(p.x, p.y, "#9F7AEA", 50); 
                 }
                 return true;
             }
@@ -476,7 +476,7 @@
             } else if (itemType === 'weapon_box') {
                 me.weapon.count = Math.min(me.weapon.count + 1, MAX_WEAPONS);
                 showFloatingText(me.x, me.y - 40, "무기 장착!", "#9F7AEA");
-            } else if (itemType === 'star') { // 🌟 피버 모드 아이템 🌟
+            } else if (itemType === 'star') { 
                 me.invincibleUntil = Date.now() + 5000;
                 me.giantUntil = Date.now() + 5000;
                 SFX.evo();
@@ -508,7 +508,7 @@
 
         function updateMovement(dt) {
             let currentSpeed = 250; 
-            if (me.giantUntil > Date.now()) currentSpeed = 400; // 거대화 시 속도 대폭 증가
+            if (me.giantUntil > Date.now()) currentSpeed = 400; 
 
             let dx = 0; let dy = 0;
             if (keys.ArrowUp) dy -= 1; if (keys.ArrowDown) dy += 1;
@@ -533,7 +533,7 @@
 
         function updateWeaponRotation(dt) { 
             const scale = getWeaponScale(me.weapon.damage);
-            const giantSpeed = me.giantUntil > Date.now() ? 2 : 1; // 거대화 시 회전속도 2배
+            const giantSpeed = me.giantUntil > Date.now() ? 2 : 1; 
             me.weapon.angle += (3 / scale) * giantSpeed * dt; 
         }
 
@@ -542,7 +542,7 @@
             if (!p.weapon || p.weapon.count <= 0) return positions;
             
             const isGiant = (p.giantUntil || 0) > Date.now();
-            const giantScale = isGiant ? 1.5 : 1; // 거대화 시 궤도 1.5배 증가
+            const giantScale = isGiant ? 1.5 : 1; 
             const scale = getWeaponScale(p.weapon.damage) * giantScale;
 
             const orbitRadius = 60 * scale; 
@@ -623,14 +623,13 @@
             const clashY = (myWeaponPos.y + otherWeaponPos.y) / 2;
             showFloatingText(clashX, clashY, "💥 챙!", "#FFF");
             
-            // 🌟 충돌 파티클 폭발 & 진동 🌟
             screenShake = 15; 
             createParticles(clashX, clashY, "#FFF", 10);
 
             const myDmg = me.weapon.damage || 0; 
             const otherDmg = (other.weapon && other.weapon.damage) ? other.weapon.damage : 0;
 
-            if (myDmg > otherDmg || (me.giantUntil > Date.now())) { // 거대화 상태면 무조건 이김!
+            if (myDmg > otherDmg || (me.giantUntil > Date.now())) { 
                 me.weapon.count = Math.min(me.weapon.count + 1, MAX_WEAPONS);
                 me.weapon.damage += 1; 
                 showFloatingText(me.x, me.y - 40, "무기 강탈 & 강화!", "#48BB78");
@@ -679,9 +678,8 @@
                 const other = otherPlayers[key];
                 if (other && other.status === 'dead' && other.killedBy === myUid && !claimedKills.has(other.deathId)) {
                     claimedKills.add(other.deathId);
-                    SFX.explosion(); // 폭발음
+                    SFX.explosion(); 
                     
-                    // 🌟 처치 시 화면 진동 및 대량 파티클 🌟
                     screenShake = 30; 
                     createParticles(other.x || me.x, other.y || me.y, "#F56565", 40);
 
@@ -754,7 +752,6 @@
         }
 
         let npcInitialized = false;
-        // 📉 봇 최적화: 지속 증원 제거, 6마리 고정 (서버 트래픽 감소)
         let targetNpcCount = 6; 
 
         function manageNPCs() {
@@ -823,7 +820,7 @@
                         updateDoc(doc(playersRef, key), { tx: Math.random() * MAP_SIZE, ty: Math.random() * MAP_SIZE, lastActive: Date.now() }).catch(()=>{});
                     } else {
                         let speed = npc.isBoss ? 200 : 100;
-                        if((npc.giantUntil||0) > Date.now()) speed += 100; // 봇도 아이템 먹으면 빨라짐
+                        if((npc.giantUntil||0) > Date.now()) speed += 100; 
                         
                         newX = npc.x + (dx/dist)*speed*0.1;
                         newY = npc.y + (dy/dist)*speed*0.1;
@@ -866,12 +863,11 @@
 
         function draw(dt) {
             if (me) {
-                // 🌟 화면 흔들림(Screen Shake) 효과 🌟
                 let shakeX = 0; let shakeY = 0;
                 if (screenShake > 0) {
                     shakeX = (Math.random() - 0.5) * screenShake;
                     shakeY = (Math.random() - 0.5) * screenShake;
-                    screenShake -= 50 * dt; // 서서히 멈춤
+                    screenShake -= 50 * dt; 
                     if (screenShake < 0) screenShake = 0;
                 }
 
@@ -882,7 +878,6 @@
                 ctx.save();
                 ctx.translate(-camera.x + shakeX, -camera.y + shakeY);
 
-                // 배경 그리드
                 ctx.strokeStyle = '#2D3748'; ctx.lineWidth = 1;
                 const step = 100;
                 const startX = Math.floor(camera.x / step) * step; const startY = Math.floor(camera.y / step) * step;
@@ -895,7 +890,6 @@
 
                 ctx.strokeStyle = '#E2E8F0'; ctx.lineWidth = 5; ctx.strokeRect(0, 0, MAP_SIZE, MAP_SIZE);
 
-                // 🌟 파티클 렌더링 🌟
                 for(let i = particles.length - 1; i >= 0; i--) {
                     let p = particles[i];
                     p.x += p.vx * dt; p.y += p.vy * dt;
@@ -909,7 +903,6 @@
                     }
                 }
 
-                // 아이템 렌더링
                 for (const id in gameItems) {
                     const item = gameItems[id];
                     const typeObj = ITEM_TYPES.find(t => t.id === item.type);
@@ -920,11 +913,11 @@
                     }
                 }
 
-                // 플레이어 렌더링
                 for (const key in otherPlayers) {
                     if (key === myUid) continue;
                     drawPlayer(otherPlayers[key]);
                 }
+
                 if (me && me.status === 'alive') drawPlayer(me, true);
 
                 ctx.restore();
@@ -957,7 +950,7 @@
             if (!p || p.status !== 'alive') return;
 
             const isGiant = (p.giantUntil || 0) > Date.now();
-            const bodyRadius = isGiant ? 40 : 20; // 🌟 거대화 시 몸집 2배
+            const bodyRadius = isGiant ? 40 : 20; 
 
             if (p.invincibleUntil > Date.now()) {
                 ctx.beginPath(); ctx.arc(p.x, p.y, bodyRadius + 10, 0, Math.PI * 2);
