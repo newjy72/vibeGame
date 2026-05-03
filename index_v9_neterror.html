@@ -65,12 +65,12 @@
         // 🔥 선생님의 Firebase 설정값으로 아래 내용을 덮어쓰세요! 🔥
         // =====================================================================
         let firebaseConfig = {
-            apiKey: "AIzaSyA0sbjPjdUReOwWdCRGBjKdQ--YmHBF1g8",
-            authDomain: "orbit-game-class.firebaseapp.com",
-            projectId: "orbit-game-class",
-            storageBucket: "orbit-game-class.firebasestorage.app",
-            messagingSenderId: "47770827555",
-            appId: "1:47770827555:web:c122c3b23587257ed9aa96"
+            apiKey: "여기에_선생님의_API_KEY_입력",
+            authDomain: "여기에_선생님의_AUTH_DOMAIN_입력",
+            projectId: "여기에_선생님의_PROJECT_ID_입력",
+            storageBucket: "여기에_선생님의_STORAGE_BUCKET_입력",
+            messagingSenderId: "여기에_선생님의_SENDER_ID_입력",
+            appId: "여기에_선생님의_APP_ID_입력"
         };
         let gameRoomId = "my-school-class-room-1";
         // =====================================================================
@@ -129,7 +129,6 @@
         let npcRespawnTimers = {}; 
         let npcUnarmedTimers = {}; 
         
-        // 🌟 브라우저 탭 절전모드(유령) 판별용 타이머
         let playerLastActiveTimes = {}; 
 
         const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
@@ -323,10 +322,11 @@
             setupNetworkListeners();
             setupInput();
             requestAnimationFrame(gameLoop);
+            
             setInterval(syncToServer, 300); 
 
-            // 최초 생성 (병합 옵션 적용)
-            setDoc(doc(playersRef, myUid), me, { merge: true }).catch(e => {
+            // 초기 생성 (통신 오류 방지)
+            setDoc(doc(playersRef, myUid), me).catch(e => {
                 console.error("서버 데이터 생성 지연 발생:", e);
             });
         }
@@ -388,9 +388,10 @@
 
                 snapshot.forEach(docSnap => {
                     const data = docSnap.data();
-                    if (!data) return;
+                    // 오류 데이터 무시
+                    if (!data || !data.uid) return;
 
-                    // 🌟 유령 플레이어 완벽 차단 로직 (로컬 타이머 교차 검증) 🌟
+                    // 사람인 경우 유령(접속종료자) 차단 로직
                     if (!data.isNpc) {
                         if (!playerLastActiveTimes[data.uid]) {
                             playerLastActiveTimes[data.uid] = { serverVal: data.lastActive, localTime: now };
@@ -398,7 +399,7 @@
                             playerLastActiveTimes[data.uid] = { serverVal: data.lastActive, localTime: now };
                         }
 
-                        // 30초 동안 움직임(통신)이 없으면 유령으로 취급하여 표시하지 않음
+                        // 30초 이상 통신이 안 된 경우 화면에 렌더링하지 않음
                         if (now - playerLastActiveTimes[data.uid].localTime > 30000) {
                             if (isHost && data.uid !== myUid) {
                                 deleteDoc(doc(playersRef, data.uid)).catch(()=>{});
@@ -407,6 +408,7 @@
                         }
                     }
 
+                    // 위치 부드러운 보정 처리 (Lerp 준비)
                     if (otherPlayers[data.uid]) {
                         data.targetX = data.x;
                         data.targetY = data.y;
@@ -426,21 +428,6 @@
                         oldestJoin = data.joinedAt;
                         potentialHost = data.uid;
                     }
-
-                    if (data.uid === myUid && me && me.status === 'alive' && data.status === 'dead') {
-                        me.hp = 0; me.status = 'dead';
-                        me.killedBy = data.killedBy; me.deathId = data.deathId;
-                        
-                        document.getElementById('death-msg').innerText = `체력이 모두 소진되어 패배했습니다!`;
-                        document.getElementById('death-screen').style.display = 'flex';
-                        let countdown = 3;
-                        document.getElementById('respawn-timer').innerText = countdown;
-                        const respawnInterval = setInterval(() => {
-                            countdown--;
-                            document.getElementById('respawn-timer').innerText = countdown;
-                            if (countdown <= 0) { clearInterval(respawnInterval); respawn(); }
-                        }, 1000);
-                    }
                 });
 
                 otherPlayers = currentPlayers;
@@ -456,23 +443,13 @@
         }
 
         function syncToServer() {
-            if (!me) return;
+            if (!me || me.status !== 'alive') return;
             me.lastActive = Date.now(); 
             
-            // 🌟 updateDoc 대신 setDoc 병합 사용: 강제로 데이터 부활 🌟
-            setDoc(doc(playersRef, myUid), {
-                x: me.x, y: me.y,
-                'weapon.angle': me.weapon.angle, 'weapon.count': me.weapon.count,
-                hp: me.hp, score: me.score, 'weapon.damage': me.weapon.damage,
-                items: me.items, status: me.status,
-                evolution: me.evolution,
-                'weapon.icon': me.weapon.icon, 'weapon.name': me.weapon.name,
-                invincibleUntil: me.invincibleUntil, giantUntil: me.giantUntil || 0,
-                killedBy: me.killedBy, deathId: me.deathId, lostDamage: me.lostDamage,
-                lastActive: me.lastActive 
-            }, { merge: true }).catch(e => console.error("Sync error", e));
+            // 🌟 내 정보를 통째로 전송하여 데이터 누락(유령화) 방지 🌟
+            setDoc(doc(playersRef, myUid), me).catch(e => console.error("Sync error", e));
             
-            if (isHost && me.status === 'alive') { manageNPCs(); manageItems(); }
+            if (isHost) { manageNPCs(); manageItems(); }
         }
 
         function setupInput() {
@@ -558,11 +535,13 @@
             me.x = Math.max(20, Math.min(MAP_SIZE - 20, me.x));
             me.y = Math.max(20, Math.min(MAP_SIZE - 20, me.y));
 
+            // 🌟 시간 렉(Lag)으로 인한 튕김 오버슛 방지 로직 적용 🌟
+            const lerpFactor = Math.min(10 * dt, 1);
             for (const uid in otherPlayers) {
                 let p = otherPlayers[uid];
                 if (p.targetX !== undefined && p.targetY !== undefined) {
-                    p.x += (p.targetX - p.x) * 10 * dt;
-                    p.y += (p.targetY - p.y) * 10 * dt;
+                    p.x += (p.targetX - p.x) * lerpFactor;
+                    p.y += (p.targetY - p.y) * lerpFactor;
                 }
             }
         }
@@ -680,8 +659,11 @@
                 showFloatingText(me.x, me.y - 40, "무기 강탈 & 강화!", "#48BB78");
                 checkAndApplyEvolution(me, true); 
                 
-                const newCount = Math.max((other.weapon.count || 0) - 1, 0);
-                updateDoc(doc(playersRef, otherId), { 'weapon.count': newCount }).catch(()=>{});
+                // 내가 이긴 경우, 봇 데이터만 직접 깎아줌 (사람은 각자 알아서 깎음)
+                if (other.isNpc) {
+                    const newCount = Math.max((other.weapon.count || 0) - 1, 0);
+                    updateDoc(doc(playersRef, otherId), { 'weapon.count': newCount }).catch(()=>{});
+                }
             } else if (myDmg < otherDmg) {
                 me.weapon.count = Math.max(me.weapon.count - 1, 0);
                 showFloatingText(me.x, me.y - 40, "무기 파괴됨!", "#F56565");
