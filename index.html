@@ -61,13 +61,15 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // =====================================================================
-        // 🔥 선생님의 Firebase 설정값으로 아래 내용을 덮어쓰세요! 🔥
+        // ✅ 강제 1서버 설정
+        // 아래 Firebase 프로젝트와 방 ID를 모든 브라우저가 똑같이 사용합니다.
+        // __app_id, __firebase_config 같은 외부 환경값을 절대 사용하지 않습니다.
         // =====================================================================
-        let firebaseConfig = {
+        const firebaseConfig = {
             apiKey: "AIzaSyA0sbjPjdUReOwWdCRGBjKdQ--YmHBF1g8",
             authDomain: "orbit-game-class.firebaseapp.com",
             projectId: "orbit-game-class",
@@ -75,26 +77,24 @@
             messagingSenderId: "47770827555",
             appId: "1:47770827555:web:c122c3b23587257ed9aa96"
         };
-        let gameRoomId = "my-school-class-room-1";
-        // =====================================================================
 
-        try {
-            if (typeof __firebase_config !== 'undefined' && __firebase_config) firebaseConfig = JSON.parse(__firebase_config);
-            if (typeof __app_id !== 'undefined' && __app_id) gameRoomId = __app_id;
-        } catch (e) {
-            console.error("환경 변수 로드 에러:", e);
-        }
+        // ✅ 수업 전체가 들어갈 단 하나의 고정 방
+        const GAME_ROOM_ID = "orbit-classroom-server-001";
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
 
-        // 🌟 접속 경로 통일 (어느 환경이든 같은 DB면 반드시 만나게 함) 🌟
-        const playersRef = collection(db, 'artifacts', gameRoomId, 'public', 'data', 'players');
-        const itemsRef = collection(db, 'artifacts', gameRoomId, 'public', 'data', 'items');
+        // ✅ 강제 1서버 경로
+        // 모든 브라우저가 아래 한 경로만 사용하므로 Edge, Chrome, 다른 PC도 같은 방에서 만납니다.
+        const playersRef = collection(db, "rooms", GAME_ROOM_ID, "players");
+        const itemsRef = collection(db, "rooms", GAME_ROOM_ID, "items");
 
-        // 화면에 현재 접속 서버/방 정보 표시 (디버깅용)
-        document.getElementById('debug-info').innerText = `서버: ${firebaseConfig.projectId || 'Canvas 임시서버'} | 방 ID: ${gameRoomId}`;
+        function setDebug(message) {
+            document.getElementById("debug-info").innerText = message;
+        }
+
+        setDebug(`서버: ${firebaseConfig.projectId} | 고정방: ${GAME_ROOM_ID} | 인증 대기 중`);
 
         const MAP_SIZE = 3000;
         const BASE_HP = 30;
@@ -269,16 +269,16 @@
 
         async function initAuth() {
             try {
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
+                // ✅ 강제 1서버 버전에서는 항상 익명 로그인만 사용합니다.
+                // 외부 환경 토큰을 사용하면 서로 다른 인증 환경으로 갈 수 있어 제거했습니다.
+                await signInAnonymously(auth);
             } catch (error) {
                 console.error("Firebase Login Error:", error);
                 const joinBtn = document.getElementById('join-btn');
-                joinBtn.innerText = "서버 접속 실패 (설정 확인)";
-                alert("게임 서버에 접속할 수 없습니다.\n독립 실행 시 Firebase 설정값을 정확히 입력했는지 확인하세요.");
+                joinBtn.innerText = "서버 접속 실패";
+                joinBtn.disabled = true;
+                setDebug("Firebase 인증 실패: Anonymous Auth 설정 확인 필요");
+                alert("게임 서버에 접속할 수 없습니다.\nFirebase Authentication에서 Anonymous 로그인을 켰는지 확인하세요.");
             }
         }
 
@@ -334,7 +334,9 @@
 
             // 초기 생성 (통신 오류 방지)
             setDoc(doc(playersRef, myUid), me, {merge: true}).catch(e => {
-                console.error("서버 데이터 생성 지연 발생:", e);
+                console.error("서버 데이터 생성 실패:", e);
+                setDebug("Firestore 쓰기 실패: Rules/Auth 설정 확인 필요");
+                alert("내 플레이어 정보를 서버에 저장하지 못했습니다.\nFirebase Rules를 확인하세요.");
             });
         }
 
@@ -405,12 +407,7 @@
                             playerLastActiveTimes[data.uid] = { serverVal: data.lastActive, localTime: now };
                         }
 
-                        // 15초 이상 멈춰있으면 잠수 상태(isDisconnected)로 간주하고 방장 권한 제외
-                        if (now - playerLastActiveTimes[data.uid].localTime > 15000) {
-                            data.isDisconnected = true;
-                        } else {
-                            data.isDisconnected = false;
-                        }
+                        data.isDisconnected = now - playerLastActiveTimes[data.uid].localTime > 15000;
                     } else {
                         data.isDisconnected = false;
                     }
@@ -419,7 +416,7 @@
                     if (otherPlayers[data.uid]) {
                         data.targetX = data.x;
                         data.targetY = data.y;
-                        data.x = otherPlayers[data.uid].x; 
+                        data.x = otherPlayers[data.uid].x;
                         data.y = otherPlayers[data.uid].y;
                         if (data.weapon && otherPlayers[data.uid].weapon) {
                             data.weapon.angle = otherPlayers[data.uid].weapon.angle;
@@ -430,8 +427,8 @@
                     }
 
                     currentPlayers[data.uid] = data;
-                    
-                    // 살아있으면서 잠수(절전) 중이 아닌 가장 오래된 사람을 방장으로!
+
+                    // 살아있으면서 잠수 중이 아닌 가장 오래된 사람을 방장으로 지정
                     if (!data.isNpc && !data.isDisconnected && data.joinedAt < oldestJoin) {
                         oldestJoin = data.joinedAt;
                         potentialHost = data.uid;
@@ -439,36 +436,50 @@
 
                     // 서버판정: 내가 죽었을 때
                     if (data.uid === myUid && me && me.status === 'alive' && data.status === 'dead') {
-                        me.hp = 0; me.status = 'dead';
-                        me.killedBy = data.killedBy; me.deathId = data.deathId;
-                        
+                        me.hp = 0;
+                        me.status = 'dead';
+                        me.killedBy = data.killedBy;
+                        me.deathId = data.deathId;
+
                         document.getElementById('death-msg').innerText = `체력이 모두 소진되어 패배했습니다!`;
                         document.getElementById('death-screen').style.display = 'flex';
+
                         let countdown = 3;
                         document.getElementById('respawn-timer').innerText = countdown;
                         const respawnInterval = setInterval(() => {
                             countdown--;
                             document.getElementById('respawn-timer').innerText = countdown;
-                            if (countdown <= 0) { clearInterval(respawnInterval); respawn(); }
+                            if (countdown <= 0) {
+                                clearInterval(respawnInterval);
+                                respawn();
+                            }
                         }, 1000);
                     }
                 });
 
                 otherPlayers = currentPlayers;
-                isHost = (potentialHost === myUid);
+                isHost = potentialHost === myUid;
+
+                const realPlayerCount = Object.values(otherPlayers).filter(p => !p.isNpc).length;
+                const npcCount = Object.values(otherPlayers).filter(p => p.isNpc).length;
+                setDebug(`서버: ${firebaseConfig.projectId} | 고정방: ${GAME_ROOM_ID} | 사람: ${realPlayerCount}명 | 봇: ${npcCount}명 | ${isHost ? '방장' : '참가자'}`);
+
                 updateLeaderboard();
             }, (error) => {
-                console.error("playersRef 실시간 수신 오류:", error);
-                document.getElementById('debug-info').innerText = "플레이어 수신 오류: Firebase 규칙/경로 확인";
+                console.error("플레이어 목록 읽기 실패:", error);
+                setDebug("Firestore 읽기 실패: Rules/Auth 설정 확인 필요");
+                alert("Firestore에서 플레이어 목록을 읽지 못했습니다.\nFirebase Rules 또는 Anonymous Auth 설정을 확인하세요.");
             });
 
             onSnapshot(itemsRef, (snapshot) => {
                 const currentItems = {};
-                snapshot.forEach(docSnap => { currentItems[docSnap.id] = docSnap.data(); });
+                snapshot.forEach(docSnap => {
+                    currentItems[docSnap.id] = docSnap.data();
+                });
                 gameItems = currentItems;
             }, (error) => {
-                console.error("itemsRef 실시간 수신 오류:", error);
-                document.getElementById('debug-info').innerText = "아이템 수신 오류: Firebase 규칙/경로 확인";
+                console.error("아이템 목록 읽기 실패:", error);
+                setDebug("Firestore 아이템 읽기 실패: Rules/Auth 설정 확인 필요");
             });
         }
 
@@ -477,7 +488,10 @@
             me.lastActive = Date.now(); 
             
             // 🌟 강제로 데이터 누락을 방지하는 통째 덮어씌우기 (Merge) 🌟
-            setDoc(doc(playersRef, myUid), me, { merge: true }).catch(e => console.error("Sync error", e));
+            setDoc(doc(playersRef, myUid), me, { merge: true }).catch(e => {
+                console.error("Sync error", e);
+                setDebug("Firestore 쓰기 실패: Rules/Auth 설정 확인 필요");
+            });
             
             if (isHost) { manageNPCs(); manageItems(); }
         }
