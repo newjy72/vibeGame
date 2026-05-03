@@ -21,6 +21,8 @@
         
         .effect-text { position: absolute; font-weight: bold; font-size: 20px; text-shadow: 1px 1px 2px black; pointer-events: none; animation: floatUp 1s ease-out forwards; z-index: 40; }
         @keyframes floatUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-50px); } }
+        
+        #debug-info { position: absolute; bottom: 5px; right: 10px; font-size: 11px; color: #A0AEC0; z-index: 100; pointer-events: none; }
     </style>
 </head>
 <body>
@@ -39,6 +41,7 @@
             <div class="item-slot" id="slot-4"><div class="key-hint">4</div><span></span></div>
             <div class="item-slot" id="slot-5"><div class="key-hint">5</div><span></span></div>
         </div>
+        <div id="debug-info">서버 연결 대기 중...</div>
     </div>
 
     <div id="floating-texts"></div>
@@ -59,18 +62,18 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, doc, setDoc, onSnapshot, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // =====================================================================
         // 🔥 선생님의 Firebase 설정값으로 아래 내용을 덮어쓰세요! 🔥
         // =====================================================================
         let firebaseConfig = {
-            apiKey: "AIzaSyA0sbjPjdUReOwWdCRGBjKdQ--YmHBF1g8",
-            authDomain: "orbit-game-class.firebaseapp.com",
-            projectId: "orbit-game-class",
-            storageBucket: "orbit-game-class.firebasestorage.app",
-            messagingSenderId: "47770827555",
-            appId: "1:47770827555:web:c122c3b23587257ed9aa96"
+            apiKey: "여기에_선생님의_API_KEY_입력",
+            authDomain: "여기에_선생님의_AUTH_DOMAIN_입력",
+            projectId: "여기에_선생님의_PROJECT_ID_입력",
+            storageBucket: "여기에_선생님의_STORAGE_BUCKET_입력",
+            messagingSenderId: "여기에_선생님의_SENDER_ID_입력",
+            appId: "여기에_선생님의_APP_ID_입력"
         };
         let gameRoomId = "my-school-class-room-1";
         // =====================================================================
@@ -86,8 +89,12 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
 
+        // 🌟 접속 경로 통일 (어느 환경이든 같은 DB면 반드시 만나게 함) 🌟
         const playersRef = collection(db, 'artifacts', gameRoomId, 'public', 'data', 'players');
         const itemsRef = collection(db, 'artifacts', gameRoomId, 'public', 'data', 'items');
+
+        // 화면에 현재 접속 서버/방 정보 표시 (디버깅용)
+        document.getElementById('debug-info').innerText = `서버: ${firebaseConfig.projectId || 'Canvas 임시서버'} | 방 ID: ${gameRoomId}`;
 
         const MAP_SIZE = 3000;
         const BASE_HP = 30;
@@ -128,6 +135,7 @@
         let weaponClashCooldowns = {};
         let npcRespawnTimers = {}; 
         let npcUnarmedTimers = {}; 
+        let playerLastActiveTimes = {}; 
 
         const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
         let camera = { x: 0, y: 0 };
@@ -314,7 +322,7 @@
                 color: randomColor, score: 0, items: [], status: 'alive',
                 invincibleUntil: Date.now() + 2000, giantUntil: 0, 
                 killedBy: null, lostDamage: 0, deathId: null,
-                joinedAt: Date.now(), isNpc: false
+                joinedAt: Date.now(), lastActive: Date.now(), isNpc: false, isDisconnected: false
             };
 
             document.getElementById('login-screen').style.display = 'none';
@@ -324,7 +332,10 @@
             
             setInterval(syncToServer, 400); 
 
-            setDoc(doc(playersRef, myUid), me).catch(e => console.error("생성 오류:", e));
+            // 초기 생성 (통신 오류 방지)
+            setDoc(doc(playersRef, myUid), me, {merge: true}).catch(e => {
+                console.error("서버 데이터 생성 지연 발생:", e);
+            });
         }
 
         // ==============================================================
@@ -380,15 +391,31 @@
                 const currentPlayers = {};
                 let oldestJoin = Infinity;
                 let potentialHost = null;
+                const now = Date.now();
 
                 snapshot.forEach(docSnap => {
                     const data = docSnap.data();
                     if (!data || !data.uid) return;
 
-                    // 🌟 1. 유령 판별 로직(deleteDoc) 완전 제거! 🌟
-                    // 서버에 존재하는 데이터는 일단 무조건 다 가져옵니다. 
+                    // 🌟 유령 플레이어 보호 로직 (삭제하지 않고 잠수 처리만 함) 🌟
+                    if (!data.isNpc) {
+                        if (!playerLastActiveTimes[data.uid]) {
+                            playerLastActiveTimes[data.uid] = { serverVal: data.lastActive, localTime: now };
+                        } else if (playerLastActiveTimes[data.uid].serverVal !== data.lastActive) {
+                            playerLastActiveTimes[data.uid] = { serverVal: data.lastActive, localTime: now };
+                        }
 
-                    // 🌟 2. 이동 보간법(Lerp) 적용 🌟
+                        // 15초 이상 멈춰있으면 잠수 상태(isDisconnected)로 간주하고 방장 권한 제외
+                        if (now - playerLastActiveTimes[data.uid].localTime > 15000) {
+                            data.isDisconnected = true;
+                        } else {
+                            data.isDisconnected = false;
+                        }
+                    } else {
+                        data.isDisconnected = false;
+                    }
+
+                    // 🌟 이동 보간법(Lerp) 적용 🌟
                     if (otherPlayers[data.uid]) {
                         data.targetX = data.x;
                         data.targetY = data.y;
@@ -404,8 +431,8 @@
 
                     currentPlayers[data.uid] = data;
                     
-                    // 살아있는 가장 오래된 사람을 방장으로!
-                    if (!data.isNpc && data.joinedAt < oldestJoin) {
+                    // 살아있으면서 잠수(절전) 중이 아닌 가장 오래된 사람을 방장으로!
+                    if (!data.isNpc && !data.isDisconnected && data.joinedAt < oldestJoin) {
                         oldestJoin = data.joinedAt;
                         potentialHost = data.uid;
                     }
@@ -441,8 +468,9 @@
 
         function syncToServer() {
             if (!me || me.status !== 'alive') return;
+            me.lastActive = Date.now(); 
             
-            // 🌟 3. 데이터 손실(누락) 방지를 위해 항상 통째로 덮어씌움 (Merge) 🌟
+            // 🌟 강제로 데이터 누락을 방지하는 통째 덮어씌우기 (Merge) 🌟
             setDoc(doc(playersRef, myUid), me, { merge: true }).catch(e => console.error("Sync error", e));
             
             if (isHost) { manageNPCs(); manageItems(); }
@@ -655,8 +683,6 @@
                 showFloatingText(me.x, me.y - 40, "무기 강탈 & 강화!", "#48BB78");
                 checkAndApplyEvolution(me, true); 
                 
-                // 🌟 내가 이겼을 때, 상대방(사람/봇 불문)의 데이터를 업데이트 시도 🌟
-                // 봇일 경우 방장이 처리하지만, 직접 부딪힌 내가 먼저 깎아버려도 무관함
                 const newCount = Math.max((other.weapon?.count || 0) - 1, 0);
                 setDoc(doc(playersRef, otherId), { weapon: { count: newCount } }, { merge: true }).catch(()=>{});
             } else if (myDmg < otherDmg) {
@@ -788,7 +814,7 @@
                         weapon: { icon: rWep.icon, name: rWep.name, damage: isBoss ? 15 : 3, angle: Math.random()*Math.PI*2, count: isBoss ? 6 : 2 }, 
                         evolution: 0, giantUntil: 0,
                         color: isBoss ? '#E53E3E' : '#A0AEC0', 
-                        score: 0, items: [], status: 'alive', invincibleUntil: 0, joinedAt: Date.now(), isNpc: true, isBoss: isBoss,
+                        score: 0, items: [], status: 'alive', invincibleUntil: 0, joinedAt: Date.now(), lastActive: Date.now(), isNpc: true, isBoss: isBoss,
                         tx: Math.random() * MAP_SIZE, ty: Math.random() * MAP_SIZE
                     }).catch(()=>{});
                 }
@@ -978,7 +1004,8 @@
             for (const key in otherPlayers) {
                 const p = otherPlayers[key];
                 if (p && p.status === 'alive') {
-                    ctx.fillStyle = p.isBoss ? '#E53E3E' : (p.isNpc ? '#A0AEC0' : '#F56565');
+                    // 유령(잠수) 상태일 때 미니맵에서도 반투명하게 표시
+                    ctx.fillStyle = p.isDisconnected ? 'rgba(160, 174, 192, 0.3)' : (p.isBoss ? '#E53E3E' : (p.isNpc ? '#A0AEC0' : '#F56565'));
                     ctx.beginPath(); ctx.arc(mX + p.x * scale, mY + p.y * scale, p.isBoss ? 4 : 2, 0, Math.PI * 2); ctx.fill();
                 }
             }
@@ -991,6 +1018,11 @@
 
         function drawPlayer(p, isMe = false) {
             if (!p || p.status !== 'alive') return;
+
+            // 🌟 유령 상태면 반투명 처리 🌟
+            if (p.isDisconnected && !isMe) {
+                ctx.globalAlpha = 0.3;
+            }
 
             const isGiant = (p.giantUntil || 0) > Date.now();
             const bodyRadius = isGiant ? 40 : 20; 
@@ -1050,6 +1082,8 @@
                 ctx.font = "bold 12px Arial"; ctx.fillStyle = "#F56565";
                 ctx.fillText(`무기 없음!`, p.x, p.y + (bodyRadius + 15));
             }
+            
+            ctx.globalAlpha = 1.0; // 투명도 원상복구
         }
 
         function updateLeaderboard() {
@@ -1070,9 +1104,9 @@
                 if (idx === 0) rankIcon = '🥇'; else if (idx === 1) rankIcon = '🥈'; else if (idx === 2) rankIcon = '🥉';
                 else rankIcon = `<span class="inline-block w-5 text-center text-gray-500">${idx+1}</span>`;
 
-                const li = document.createElement('li');
+                // 유령(잠수) 상태 표시 추가
                 const isMeClass = p.uid === myUid ? 'text-green-400 font-bold' : (p.isBoss ? 'text-red-500 font-bold' : (p.isNpc ? 'text-gray-400' : 'text-white'));
-                const statusStr = p.status === 'dead' ? ' <span class="text-red-500 text-xs">[사망]</span>' : '';
+                const statusStr = p.status === 'dead' ? ' <span class="text-red-500 text-xs">[사망]</span>' : (p.isDisconnected ? ' <span class="text-gray-500 text-xs">[잠수]</span>' : '');
                 const weaponIcon = p.weapon ? p.weapon.icon : '';
                 const weaponCount = p.weapon ? p.weapon.count : 0;
                 const weaponDmg = p.weapon ? p.weapon.damage : 0;
