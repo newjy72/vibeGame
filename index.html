@@ -65,12 +65,12 @@
         // 🔥 선생님의 Firebase 설정값으로 아래 내용을 덮어쓰세요! 🔥
         // =====================================================================
         let firebaseConfig = {
-            apiKey: "AIzaSyA0sbjPjdUReOwWdCRGBjKdQ--YmHBF1g8",
-            authDomain: "orbit-game-class.firebaseapp.com",
-            projectId: "orbit-game-class",
-            storageBucket: "orbit-game-class.firebasestorage.app",
-            messagingSenderId: "47770827555",
-            appId: "1:47770827555:web:c122c3b23587257ed9aa96"
+            apiKey: "여기에_선생님의_API_KEY_입력",
+            authDomain: "여기에_선생님의_AUTH_DOMAIN_입력",
+            projectId: "여기에_선생님의_PROJECT_ID_입력",
+            storageBucket: "여기에_선생님의_STORAGE_BUCKET_입력",
+            messagingSenderId: "여기에_선생님의_SENDER_ID_입력",
+            appId: "여기에_선생님의_APP_ID_입력"
         };
         let gameRoomId = "my-school-class-room-1";
         // =====================================================================
@@ -86,7 +86,6 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
 
-        // Firebase 경로 안정화 규칙 준수
         const playersRef = collection(db, 'artifacts', gameRoomId, 'public', 'data', 'players');
         const itemsRef = collection(db, 'artifacts', gameRoomId, 'public', 'data', 'items');
 
@@ -100,10 +99,14 @@
             { icon: '🍔', name: '햄버거' }, { icon: '✏️', name: '연필' }, { icon: '👟', name: '실내화' }
         ];
 
+        // 🌟 진화 단계 세분화 (50, 100, 150, 200, 400, 800) 🌟
         const EVOLUTION_TIERS = {
-            1: [ {icon: '🪓', name: '도끼'}, {icon: '🏹', name: '활'}, {icon: '🗡️', name: '단검'} ],
-            2: [ {icon: '⚔️', name: '쌍검'}, {icon: '💣', name: '폭탄'}, {icon: '⚙️', name: '톱니바퀴'} ],
-            3: [ {icon: '⚡', name: '뇌전'}, {icon: '🔥', name: '지옥불'}, {icon: '🌠', name: '운석'} ]
+            1: [ {icon: '🪓', name: '도끼'}, {icon: '🏹', name: '활'}, {icon: '🗡️', name: '단검'} ], // 50
+            2: [ {icon: '⚔️', name: '쌍검'}, {icon: '💣', name: '폭탄'}, {icon: '⚙️', name: '톱니바퀴'} ], // 100
+            3: [ {icon: '🔫', name: '총'}, {icon: '🧨', name: '다이너마이트'}, {icon: '⛓️', name: '철퇴'} ], // 150
+            4: [ {icon: '🔱', name: '삼지창'}, {icon: '🛡️', name: '방패'}, {icon: '🪄', name: '마법지팡이'} ], // 200
+            5: [ {icon: '⚡', name: '뇌전'}, {icon: '🔥', name: '지옥불'}, {icon: '🌠', name: '운석'} ], // 400
+            6: [ {icon: '🌌', name: '블랙홀'}, {icon: '☀️', name: '태양'}, {icon: '🌀', name: '차원균열'} ] // 800
         };
 
         const COLORS = ['#F56565', '#ED8936', '#ECC94B', '#48BB78', '#38B2AC', '#4299E1', '#9F7AEA', '#ED64A6'];
@@ -287,9 +290,8 @@
         });
         initAuth();
 
-        // 🌟 [핵심 수정] 서버 응답을 기다리지 않고 화면부터 즉시 띄우는 Non-blocking 입장 로직 🌟
         function joinGame() {
-            if (!myUid || me) return; // 중복 클릭 차단
+            if (!myUid || me) return; 
             
             const joinBtn = document.getElementById('join-btn');
             joinBtn.innerText = "입장 중...";
@@ -315,17 +317,14 @@
                 joinedAt: Date.now(), lastActive: Date.now(), isNpc: false
             };
 
-            // 1. 화면 전환부터 즉시 실행하여 멈춤 현상(Freezing) 완벽 차단!
             document.getElementById('login-screen').style.display = 'none';
             setupNetworkListeners();
             setupInput();
             requestAnimationFrame(gameLoop);
-            setInterval(syncToServer, 300); // 300ms 주기로 데이터 절약 유지
+            setInterval(syncToServer, 300); 
 
-            // 2. 서버 데이터 저장은 백그라운드 비동기로 넘겨서 기다리지 않게 만듦
             setDoc(doc(playersRef, myUid), me).catch(e => {
                 console.error("서버 데이터 생성 지연 발생:", e);
-                // 지연되더라도 로컬 화면은 계속 부드럽게 돌아가도록 냅둡니다.
             });
         }
 
@@ -340,9 +339,13 @@
             let newEvo = p.evolution || 0;
             const dmg = p.weapon.damage || 0;
             
-            if (dmg >= 600) newEvo = 3;
-            else if (dmg >= 300) newEvo = 2;
-            else if (dmg >= 150) newEvo = 1;
+            // 🌟 세분화된 진화 컷트라인 적용 🌟
+            if (dmg >= 800) newEvo = 6;
+            else if (dmg >= 400) newEvo = 5;
+            else if (dmg >= 200) newEvo = 4;
+            else if (dmg >= 150) newEvo = 3;
+            else if (dmg >= 100) newEvo = 2;
+            else if (dmg >= 50) newEvo = 1;
 
             if (newEvo > (p.evolution || 0)) {
                 p.evolution = newEvo;
@@ -391,6 +394,23 @@
                             if (isHost) deleteDoc(doc(playersRef, data.uid)).catch(()=>{});
                             return; 
                         }
+                    }
+
+                    // 🌟 보간법(Lerp) 처리를 위한 타겟 좌표 설정 🌟
+                    if (otherPlayers[data.uid]) {
+                        data.targetX = data.x;
+                        data.targetY = data.y;
+                        // 통신 전까지 로컬에서 부드럽게 이동한 좌표를 유지
+                        data.x = otherPlayers[data.uid].x; 
+                        data.y = otherPlayers[data.uid].y;
+                        
+                        // 각도(angle)도 로컬에서 부드럽게 돌아가도록 유지
+                        if (data.weapon && otherPlayers[data.uid].weapon) {
+                            data.weapon.angle = otherPlayers[data.uid].weapon.angle;
+                        }
+                    } else {
+                        data.targetX = data.x;
+                        data.targetY = data.y;
                     }
 
                     currentPlayers[data.uid] = data;
@@ -529,12 +549,31 @@
 
             me.x = Math.max(20, Math.min(MAP_SIZE - 20, me.x));
             me.y = Math.max(20, Math.min(MAP_SIZE - 20, me.y));
+
+            // 🌟 봇 및 타 플레이어 부드러운 움직임 보간(Lerp) 적용 🌟
+            for (const uid in otherPlayers) {
+                let p = otherPlayers[uid];
+                if (p.targetX !== undefined && p.targetY !== undefined) {
+                    p.x += (p.targetX - p.x) * 10 * dt;
+                    p.y += (p.targetY - p.y) * 10 * dt;
+                }
+            }
         }
 
         function updateWeaponRotation(dt) { 
             const scale = getWeaponScale(me.weapon.damage);
             const giantSpeed = me.giantUntil > Date.now() ? 2 : 1; 
             me.weapon.angle += (3 / scale) * giantSpeed * dt; 
+
+            // 🌟 봇 및 타 플레이어 무기도 화면에서 부드럽게 계속 회전시킴 🌟
+            for (const uid in otherPlayers) {
+                let p = otherPlayers[uid];
+                if (p.weapon && p.status === 'alive') {
+                    const pScale = getWeaponScale(p.weapon.damage);
+                    const pGiantSpeed = (p.giantUntil || 0) > Date.now() ? 2 : 1; 
+                    p.weapon.angle += (3 / pScale) * pGiantSpeed * dt; 
+                }
+            }
         }
 
         function getWeaponPositions(p) {
@@ -825,10 +864,8 @@
                         newX = npc.x + (dx/dist)*speed*0.1;
                         newY = npc.y + (dy/dist)*speed*0.1;
                         
-                        const scale = getWeaponScale(npc.weapon.damage || 5);
                         let updates = { 
                             x: newX, y: newY, 
-                            'weapon.angle': npc.weapon.angle + (npc.isBoss ? 0.4 : 0.3) / scale,
                             lastActive: Date.now()
                         };
 
@@ -838,23 +875,50 @@
                             updates['weapon.name'] = npc.weapon.name;
                         }
 
+                        // 🌟 [최적화] 봇 아이템 획득 및 인공지능 사용 🌟
                         for (let itemId in gameItems) {
                             const item = gameItems[itemId];
                             if (Math.hypot(item.x - newX, item.y - newY) < 30) {
-                                if (item.type === 'heal') updates.hp = Math.min(npc.hp + 15, npc.maxHp);
-                                if (item.type === 'upgrade') updates['weapon.damage'] = (npc.weapon.damage||5) + 3;
-                                if (item.type === 'shield') updates.invincibleUntil = Date.now() + 3000;
-                                if (item.type === 'weapon_box') updates['weapon.count'] = Math.min((npc.weapon.count||0) + 1, MAX_WEAPONS);
-                                if (item.type === 'star') {
+                                if (!npc.items) npc.items = [];
+                                if (npc.items.length < 5) {
+                                    npc.items.push(item.type);
+                                    updates.items = npc.items;
+                                    deleteDoc(doc(itemsRef, itemId)).catch(()=>{});
+                                    delete gameItems[itemId];
+                                    break; 
+                                }
+                            }
+                        }
+
+                        // 주변에 플레이어가 있을 때만 인벤토리 아이템 사용 (가벼운 연산)
+                        if (npc.items && npc.items.length > 0) {
+                            let playerNearby = false;
+                            if (me && me.status === 'alive' && Math.hypot(me.x - newX, me.y - newY) < 400) {
+                                playerNearby = true;
+                            }
+                            if (!playerNearby) {
+                                for (let pid in otherPlayers) {
+                                    let p = otherPlayers[pid];
+                                    if (!p.isNpc && p.status === 'alive' && Math.hypot(p.x - newX, p.y - newY) < 400) {
+                                        playerNearby = true; break;
+                                    }
+                                }
+                            }
+
+                            if (playerNearby) {
+                                const usedItem = npc.items.shift();
+                                updates.items = npc.items;
+                                if (usedItem === 'heal') updates.hp = Math.min((npc.hp||0) + 15, npc.maxHp||30);
+                                if (usedItem === 'upgrade') updates['weapon.damage'] = (npc.weapon.damage||5) + 3;
+                                if (usedItem === 'shield') updates.invincibleUntil = Date.now() + 3000;
+                                if (usedItem === 'weapon_box') updates['weapon.count'] = Math.min((npc.weapon.count||0) + 1, MAX_WEAPONS);
+                                if (usedItem === 'star') {
                                     updates.invincibleUntil = Date.now() + 5000;
                                     updates.giantUntil = Date.now() + 5000;
                                 }
-                                
-                                deleteDoc(doc(itemsRef, itemId)).catch(()=>{});
-                                delete gameItems[itemId];
-                                break; 
                             }
                         }
+
                         updateDoc(doc(playersRef, key), updates).catch(()=>{});
                     }
                 }
