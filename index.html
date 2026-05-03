@@ -23,6 +23,144 @@
         @keyframes floatUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-50px); } }
         
         #debug-info { position: absolute; bottom: 5px; right: 10px; font-size: 11px; color: #A0AEC0; z-index: 100; pointer-events: none; }
+/* ==============================
+   📱 모바일 대응 UI
+============================== */
+
+body, html {
+    touch-action: none;
+    overscroll-behavior: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+#mobile-controls {
+    display: none;
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 80;
+}
+
+#joystick-base {
+    position: absolute;
+    left: 22px;
+    bottom: 28px;
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.45);
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    pointer-events: auto;
+    touch-action: none;
+}
+
+#joystick-knob {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 54px;
+    height: 54px;
+    border-radius: 50%;
+    background: rgba(236, 201, 75, 0.9);
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 12px rgba(236, 201, 75, 0.7);
+}
+
+#mobile-item-buttons {
+    position: absolute;
+    right: 14px;
+    bottom: 30px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: auto;
+}
+
+.mobile-item-btn {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    background: rgba(45, 55, 72, 0.9);
+    color: white;
+    font-size: 22px;
+    font-weight: bold;
+}
+
+.mobile-item-btn.filled {
+    background: rgba(159, 122, 234, 0.9);
+    box-shadow: 0 0 10px rgba(159, 122, 234, 0.7);
+}
+
+@media (max-width: 768px) {
+    #leaderboard {
+        top: 8px;
+        right: 8px;
+        width: 145px;
+        max-height: 38px;
+        padding: 7px 9px;
+        border-radius: 999px;
+        overflow: hidden;
+        opacity: 0.88;
+        transition: all 0.2s ease;
+    }
+
+    #leaderboard.open {
+        width: min(270px, calc(100vw - 16px));
+        max-height: 45vh;
+        border-radius: 12px;
+        opacity: 0.96;
+    }
+
+    #leaderboard h2 {
+        font-size: 13px !important;
+        line-height: 1.2;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+        cursor: pointer;
+    }
+
+    #leaderboard:not(.open) #player-list {
+        display: none;
+    }
+
+    #player-list {
+        margin-top: 8px;
+        font-size: 12px;
+    }
+
+    #inventory {
+        display: none;
+    }
+
+    #mobile-controls {
+        display: block;
+    }
+
+    #debug-info {
+        top: 8px;
+        left: 8px;
+        right: auto;
+        bottom: auto;
+        max-width: 55vw;
+        font-size: 10px;
+        background: rgba(0, 0, 0, 0.35);
+        padding: 3px 6px;
+        border-radius: 6px;
+    }
+
+    #login-screen h1 {
+        font-size: 32px !important;
+        text-align: center;
+    }
+
+    #login-screen p {
+        font-size: 14px;
+        padding: 0 20px;
+    }
+}
     </style>
 </head>
 <body>
@@ -42,6 +180,19 @@
             <div class="item-slot" id="slot-5"><div class="key-hint">5</div><span></span></div>
         </div>
         <div id="debug-info">서버 연결 대기 중...</div>
+        <div id="mobile-controls">
+    <div id="joystick-base">
+        <div id="joystick-knob"></div>
+    </div>
+
+    <div id="mobile-item-buttons">
+        <button type="button" class="mobile-item-btn" data-item-index="0">1</button>
+        <button type="button" class="mobile-item-btn" data-item-index="1">2</button>
+        <button type="button" class="mobile-item-btn" data-item-index="2">3</button>
+        <button type="button" class="mobile-item-btn" data-item-index="3">4</button>
+        <button type="button" class="mobile-item-btn" data-item-index="4">5</button>
+    </div>
+</div>
     </div>
 
     <div id="floating-texts"></div>
@@ -151,6 +302,11 @@
         let playerLastActiveTimes = {}; 
 
         const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
+        const mobileMove = {
+            x: 0,
+            y: 0,
+            active: false
+        };
         let camera = { x: 0, y: 0 };
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
@@ -531,12 +687,113 @@
         function setupInput() {
             window.addEventListener('keydown', (e) => {
                 if (keys.hasOwnProperty(e.code)) keys[e.code] = true;
+        
                 const itemKeys = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5'];
                 const idx = itemKeys.indexOf(e.code);
-                if (idx !== -1 && me && me.status === 'alive') useItem(idx);
+        
+                if (idx !== -1 && me && me.status === 'alive') {
+                    useItem(idx);
+                }
             });
-            window.addEventListener('keyup', (e) => { if (keys.hasOwnProperty(e.code)) keys[e.code] = false; });
+        
+            window.addEventListener('keyup', (e) => {
+                if (keys.hasOwnProperty(e.code)) keys[e.code] = false;
+            });
+        
+            setupMobileJoystick();
+            setupMobileItemButtons();
+            setupMobileLeaderboard();
         }
+      function setupMobileLeaderboard() {
+    const leaderboard = document.getElementById('leaderboard');
+    const title = leaderboard ? leaderboard.querySelector('h2') : null;
+
+    if (!leaderboard || !title) return;
+
+    title.addEventListener('click', () => {
+        if (window.innerWidth <= 768) {
+            leaderboard.classList.toggle('open');
+        }
+    });
+}
+
+function setupMobileItemButtons() {
+    const buttons = document.querySelectorAll('.mobile-item-btn');
+
+    buttons.forEach((button) => {
+        button.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+
+            const idx = Number(button.dataset.itemIndex);
+
+            if (me && me.status === 'alive') {
+                useItem(idx);
+            }
+        });
+    });
+}
+
+function setupMobileJoystick() {
+    const base = document.getElementById('joystick-base');
+    const knob = document.getElementById('joystick-knob');
+
+    if (!base || !knob) return;
+
+    let activePointerId = null;
+    const limit = 42;
+
+    function resetJoystick() {
+        mobileMove.x = 0;
+        mobileMove.y = 0;
+        mobileMove.active = false;
+        activePointerId = null;
+        knob.style.transform = 'translate(-50%, -50%)';
+    }
+
+    function moveJoystick(clientX, clientY) {
+        const rect = base.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+
+        let dx = clientX - centerX;
+        let dy = clientY - centerY;
+
+        const dist = Math.hypot(dx, dy);
+
+        if (dist > limit) {
+            dx = dx / dist * limit;
+            dy = dy / dist * limit;
+        }
+
+        mobileMove.x = dx / limit;
+        mobileMove.y = dy / limit;
+        mobileMove.active = true;
+
+        knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+    }
+
+    base.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        activePointerId = e.pointerId;
+        base.setPointerCapture(e.pointerId);
+        moveJoystick(e.clientX, e.clientY);
+    });
+
+    base.addEventListener('pointermove', (e) => {
+        if (e.pointerId !== activePointerId) return;
+        e.preventDefault();
+        moveJoystick(e.clientX, e.clientY);
+    });
+
+    base.addEventListener('pointerup', (e) => {
+        if (e.pointerId !== activePointerId) return;
+        e.preventDefault();
+        resetJoystick();
+    });
+
+    base.addEventListener('pointercancel', resetJoystick);
+    base.addEventListener('lostpointercapture', resetJoystick);
+}
 
         function useItem(index) {
             if (index >= me.items.length) return;
@@ -591,9 +848,20 @@
             let currentSpeed = 250; 
             if (me.giantUntil > Date.now()) currentSpeed = 400; 
 
-            let dx = 0; let dy = 0;
-            if (keys.ArrowUp) dy -= 1; if (keys.ArrowDown) dy += 1;
-            if (keys.ArrowLeft) dx -= 1; if (keys.ArrowRight) dx += 1;
+            let dx = 0;
+            let dy = 0;
+            
+            // PC 키보드 입력
+            if (keys.ArrowUp) dy -= 1;
+            if (keys.ArrowDown) dy += 1;
+            if (keys.ArrowLeft) dx -= 1;
+            if (keys.ArrowRight) dx += 1;
+            
+            // 모바일 조이스틱 입력
+            if (Math.abs(mobileMove.x) > 0.05 || Math.abs(mobileMove.y) > 0.05) {
+                dx += mobileMove.x;
+                dy += mobileMove.y;
+            }
 
             if (dx !== 0 && dy !== 0) {
                 const length = Math.sqrt(dx*dx + dy*dy);
@@ -825,10 +1093,26 @@
         function updateInventoryUI() {
             for (let i = 0; i < 5; i++) {
                 const slot = document.getElementById(`slot-${i+1}`).querySelector('span');
+                const mobileButton = document.querySelector(`.mobile-item-btn[data-item-index="${i}"]`);
+        
                 if (i < me.items.length) {
                     const typeObj = ITEM_TYPES.find(t => t.id === me.items[i]);
-                    slot.innerText = typeObj ? typeObj.icon : '?';
-                } else { slot.innerText = ''; }
+                    const icon = typeObj ? typeObj.icon : '?';
+        
+                    slot.innerText = icon;
+        
+                    if (mobileButton) {
+                        mobileButton.innerText = icon;
+                        mobileButton.classList.add('filled');
+                    }
+                } else {
+                    slot.innerText = '';
+        
+                    if (mobileButton) {
+                        mobileButton.innerText = String(i + 1);
+                        mobileButton.classList.remove('filled');
+                    }
+                }
             }
         }
 
