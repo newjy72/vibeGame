@@ -65,12 +65,12 @@
         // 🔥 선생님의 Firebase 설정값으로 아래 내용을 덮어쓰세요! 🔥
         // =====================================================================
         let firebaseConfig = {
-            apiKey: "AIzaSyA0sbjPjdUReOwWdCRGBjKdQ--YmHBF1g8",
-            authDomain: "orbit-game-class.firebaseapp.com",
-            projectId: "orbit-game-class",
-            storageBucket: "orbit-game-class.firebasestorage.app",
-            messagingSenderId: "47770827555",
-            appId: "1:47770827555:web:c122c3b23587257ed9aa96"
+            apiKey: "여기에_선생님의_API_KEY_입력",
+            authDomain: "여기에_선생님의_AUTH_DOMAIN_입력",
+            projectId: "여기에_선생님의_PROJECT_ID_입력",
+            storageBucket: "여기에_선생님의_STORAGE_BUCKET_입력",
+            messagingSenderId: "여기에_선생님의_SENDER_ID_입력",
+            appId: "여기에_선생님의_APP_ID_입력"
         };
         let gameRoomId = "my-school-class-room-1";
         // =====================================================================
@@ -129,6 +129,7 @@
         let npcRespawnTimers = {}; 
         let npcUnarmedTimers = {}; 
         
+        // 유령 판별용 타이머 
         let playerLastActiveTimes = {}; 
 
         const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
@@ -155,7 +156,7 @@
                 if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 if (audioCtx.state === 'suspended') audioCtx.resume();
                 startBGM();
-            } catch (e) { console.error("오디오 에러", e); }
+            } catch (e) {}
         }
 
         function startBGM() {
@@ -323,24 +324,21 @@
             setupInput();
             requestAnimationFrame(gameLoop);
             
-            setInterval(syncToServer, 300); 
-
-            // 초기 생성 (통신 오류 방지)
-            setDoc(doc(playersRef, myUid), me).catch(e => {
-                console.error("서버 데이터 생성 지연 발생:", e);
-            });
+            // 데이터 최적화: 400ms 주기로 통신 (할당량 절약)
+            setInterval(syncToServer, 400); 
+            setDoc(doc(playersRef, myUid), me).catch(e => console.error("생성 오류:", e));
         }
 
         // ==============================================================
         // ✨ 진화 & 파티클 & 스케일링 핵심 함수 ✨
         // ==============================================================
         function getWeaponScale(damage) {
-            return 1 + Math.sqrt(Math.max(0, damage - 5)) / 20; 
+            return 1 + Math.sqrt(Math.max(0, (damage||0) - 5)) / 20; 
         }
 
         function checkAndApplyEvolution(p, isLocalUser = false) {
             let newEvo = p.evolution || 0;
-            const dmg = p.weapon.damage || 0;
+            const dmg = p.weapon?.damage || 0;
             
             if (dmg >= 800) newEvo = 6;
             else if (dmg >= 400) newEvo = 5;
@@ -388,27 +386,24 @@
 
                 snapshot.forEach(docSnap => {
                     const data = docSnap.data();
-                    // 오류 데이터 무시
                     if (!data || !data.uid) return;
 
-                    // 사람인 경우 유령(접속종료자) 차단 로직
+                    let isActive = true;
+                    // 🌟 통신 끊긴 플레이어를 강제로 삭제하지 않음! 제자리에 가만히 남겨둠.
                     if (!data.isNpc) {
                         if (!playerLastActiveTimes[data.uid]) {
                             playerLastActiveTimes[data.uid] = { serverVal: data.lastActive, localTime: now };
                         } else if (playerLastActiveTimes[data.uid].serverVal !== data.lastActive) {
                             playerLastActiveTimes[data.uid] = { serverVal: data.lastActive, localTime: now };
                         }
-
-                        // 30초 이상 통신이 안 된 경우 화면에 렌더링하지 않음
-                        if (now - playerLastActiveTimes[data.uid].localTime > 30000) {
-                            if (isHost && data.uid !== myUid) {
-                                deleteDoc(doc(playersRef, data.uid)).catch(()=>{});
-                            }
-                            return; 
+                        
+                        // 15초 이상 멈춰있으면 잠수 상태로 간주 (방장 권한만 박탈)
+                        if (now - playerLastActiveTimes[data.uid].localTime > 15000) {
+                            isActive = false; 
                         }
                     }
 
-                    // 위치 부드러운 보정 처리 (Lerp 준비)
+                    // 🌟 이동 궤적을 부드럽게 이어주는 보간법(Lerp) 적용
                     if (otherPlayers[data.uid]) {
                         data.targetX = data.x;
                         data.targetY = data.y;
@@ -424,9 +419,26 @@
 
                     currentPlayers[data.uid] = data;
                     
-                    if (!data.isNpc && data.joinedAt < oldestJoin) {
+                    // 살아있는 플레이어 중에서 가장 오래된 사람을 방장으로 임명
+                    if (!data.isNpc && isActive && data.joinedAt < oldestJoin) {
                         oldestJoin = data.joinedAt;
                         potentialHost = data.uid;
+                    }
+
+                    // 서버판정: 내가 죽었을 때
+                    if (data.uid === myUid && me && me.status === 'alive' && data.status === 'dead') {
+                        me.hp = 0; me.status = 'dead';
+                        me.killedBy = data.killedBy; me.deathId = data.deathId;
+                        
+                        document.getElementById('death-msg').innerText = `체력이 모두 소진되어 패배했습니다!`;
+                        document.getElementById('death-screen').style.display = 'flex';
+                        let countdown = 3;
+                        document.getElementById('respawn-timer').innerText = countdown;
+                        const respawnInterval = setInterval(() => {
+                            countdown--;
+                            document.getElementById('respawn-timer').innerText = countdown;
+                            if (countdown <= 0) { clearInterval(respawnInterval); respawn(); }
+                        }, 1000);
                     }
                 });
 
@@ -446,8 +458,21 @@
             if (!me || me.status !== 'alive') return;
             me.lastActive = Date.now(); 
             
-            // 🌟 내 정보를 통째로 전송하여 데이터 누락(유령화) 방지 🌟
-            setDoc(doc(playersRef, myUid), me).catch(e => console.error("Sync error", e));
+            // updateDoc으로 안전하게 업데이트 후, 에러시 setDoc으로 재생성
+            const updates = {
+                x: me.x, y: me.y,
+                weapon: me.weapon,
+                hp: me.hp, score: me.score,
+                items: me.items, status: me.status,
+                evolution: me.evolution,
+                invincibleUntil: me.invincibleUntil, giantUntil: me.giantUntil || 0,
+                killedBy: me.killedBy, deathId: me.deathId, lostDamage: me.lostDamage,
+                lastActive: me.lastActive 
+            };
+
+            updateDoc(doc(playersRef, myUid), updates).catch(e => {
+                setDoc(doc(playersRef, myUid), me).catch(err => console.error("Sync error", err));
+            });
             
             if (isHost) { manageNPCs(); manageItems(); }
         }
@@ -506,7 +531,7 @@
                 }
                 draw(dt);
             } catch (e) {
-                console.error("Game Loop 에러:", e);
+                console.error("Game Loop 에러 (멈춤 방지):", e);
             }
             requestAnimationFrame(gameLoop);
         }
@@ -535,7 +560,7 @@
             me.x = Math.max(20, Math.min(MAP_SIZE - 20, me.x));
             me.y = Math.max(20, Math.min(MAP_SIZE - 20, me.y));
 
-            // 🌟 시간 렉(Lag)으로 인한 튕김 오버슛 방지 로직 적용 🌟
+            // 🌟 시간 렉(Lag)으로 인한 튕김 방지 로직 적용 🌟
             const lerpFactor = Math.min(10 * dt, 1);
             for (const uid in otherPlayers) {
                 let p = otherPlayers[uid];
@@ -563,7 +588,7 @@
 
         function getWeaponPositions(p) {
             const positions = [];
-            if (!p.weapon || p.weapon.count <= 0) return positions;
+            if (!p || !p.weapon || p.weapon.count <= 0) return positions;
             
             const isGiant = (p.giantUntil || 0) > Date.now();
             const giantScale = isGiant ? 1.5 : 1; 
@@ -659,9 +684,8 @@
                 showFloatingText(me.x, me.y - 40, "무기 강탈 & 강화!", "#48BB78");
                 checkAndApplyEvolution(me, true); 
                 
-                // 내가 이긴 경우, 봇 데이터만 직접 깎아줌 (사람은 각자 알아서 깎음)
                 if (other.isNpc) {
-                    const newCount = Math.max((other.weapon.count || 0) - 1, 0);
+                    const newCount = Math.max((other.weapon?.count || 0) - 1, 0);
                     updateDoc(doc(playersRef, otherId), { 'weapon.count': newCount }).catch(()=>{});
                 }
             } else if (myDmg < otherDmg) {
@@ -670,8 +694,8 @@
                 me.invincibleUntil = Date.now() + 500;
                 
                 if (other.isNpc) {
-                    const newCount = Math.min((other.weapon.count||0) + 1, MAX_WEAPONS);
-                    const newDmg = (other.weapon.damage||5) + 1;
+                    const newCount = Math.min((other.weapon?.count || 0) + 1, MAX_WEAPONS);
+                    const newDmg = (other.weapon?.damage || 5) + 1;
                     updateDoc(doc(playersRef, otherId), { 'weapon.count': newCount, 'weapon.damage': newDmg }).catch(()=>{});
                 }
             } else {
