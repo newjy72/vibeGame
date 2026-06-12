@@ -22,7 +22,23 @@
         .effect-text { position: absolute; font-weight: bold; font-size: 20px; text-shadow: 1px 1px 2px black; pointer-events: none; animation: floatUp 1s ease-out forwards; z-index: 40; }
         @keyframes floatUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-50px); } }
         
-        #debug-info { position: absolute; bottom: 5px; right: 10px; font-size: 11px; color: #A0AEC0; z-index: 100; pointer-events: none; }
+        #debug-info { position: absolute; bottom: 5px; right: 10px; font-size: 11px; color: #A0AEC0; z-index: 100; pointer-events: none; display: none; }
+        #classroom-controls { position: absolute; top: 20px; left: 20px; display: flex; gap: 8px; pointer-events: auto; z-index: 120; }
+        #sound-toggle, #teacher-reset-btn { border: 1px solid rgba(255,255,255,0.25); background: rgba(0,0,0,0.55); color: white; border-radius: 8px; padding: 8px 10px; font-size: 13px; font-weight: bold; }
+        #teacher-reset-btn { display: none; background: rgba(197, 48, 48, 0.88); }
+        #game-timer { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); min-width: 120px; text-align: center; background: rgba(0, 0, 0, 0.65); border: 1px solid rgba(236, 201, 75, 0.5); color: #F6E05E; border-radius: 999px; padding: 8px 14px; font-size: 20px; font-weight: bold; pointer-events: none; z-index: 85; display: none; }
+        #final-ranking-screen { position: absolute; inset: 0; background: rgba(10, 15, 28, 0.94); display: none; flex-direction: column; align-items: center; justify-content: center; pointer-events: auto; z-index: 110; padding: 24px; }
+        #final-ranking-list { width: min(520px, 92vw); max-height: 55vh; overflow-y: auto; margin-top: 18px; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.15); border-radius: 12px; padding: 14px; }
+        .final-rank-row { display: grid; grid-template-columns: 48px 1fr auto; gap: 10px; align-items: center; padding: 10px 8px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .final-rank-row:last-child { border-bottom: none; }
+        .final-rank-name { font-weight: bold; }
+        .final-rank-score { color: #F6E05E; font-weight: bold; }
+        #teacher-settings-panel { display: none; width: min(520px, 92vw); background: rgba(0,0,0,0.32); border: 1px solid rgba(236,201,75,0.35); border-radius: 12px; padding: 14px; margin-bottom: 16px; }
+        .teacher-setting-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+        .teacher-setting-field { display: flex; flex-direction: column; gap: 4px; }
+        .teacher-setting-field label { color: #F6E05E; font-size: 13px; font-weight: bold; }
+        .teacher-setting-field input { color: black; border-radius: 8px; padding: 8px 10px; outline: none; }
+        #teacher-settings-status { min-height: 18px; color: #A0AEC0; font-size: 12px; margin-top: 10px; text-align: center; }
 /* ==============================
    📱 모바일 대응 UI
 ============================== */
@@ -139,6 +155,24 @@ body, html {
         display: block;
     }
 
+    #classroom-controls {
+        top: 8px;
+        left: 8px;
+        flex-direction: column;
+    }
+
+    #game-timer {
+        top: 8px;
+        min-width: 92px;
+        padding: 6px 10px;
+        font-size: 16px;
+    }
+
+    #sound-toggle, #teacher-reset-btn {
+        padding: 6px 8px;
+        font-size: 12px;
+    }
+
     #debug-info {
         top: 8px;
         left: 8px;
@@ -160,6 +194,10 @@ body, html {
         font-size: 14px;
         padding: 0 20px;
     }
+
+    .teacher-setting-grid {
+        grid-template-columns: 1fr;
+    }
 }
     </style>
 </head>
@@ -171,6 +209,11 @@ body, html {
         <div id="leaderboard">
             <h2 class="text-xl font-bold mb-3 border-b border-gray-500 pb-2 text-center text-yellow-300">🏆 접속자 현황</h2>
             <ul id="player-list" class="space-y-2 text-sm"></ul>
+        </div>
+        <div id="game-timer">00:00</div>
+        <div id="classroom-controls">
+            <button id="sound-toggle" type="button">🔊 소리 켜짐</button>
+            <button id="teacher-reset-btn" type="button">교사용 방 초기화</button>
         </div>
         <div id="inventory">
             <div class="item-slot" id="slot-1"><div class="key-hint">1</div><span></span></div>
@@ -200,6 +243,34 @@ body, html {
     <div id="login-screen">
         <h1 class="text-5xl font-bold text-yellow-400 mb-8">⚔️ 궤도 무기 난투 ⚔️</h1>
         <p class="mb-4 text-gray-300 text-center">적을 처치하고 <strong class="text-purple-400">환골탈태</strong> 하세요!<br>⭐별 아이템을 먹으면 <strong class="text-yellow-400">거대화 무쌍 모드</strong>가 됩니다!</p>
+        <div class="mb-5 text-gray-200 text-center leading-8 text-base bg-black/25 rounded-lg px-5 py-3">
+            <p>방향키 또는 조이스틱으로 이동하세요.</p>
+            <p>주변을 도는 무기로 상대를 맞히면 공격합니다.</p>
+            <p>아이템은 1~5번 또는 오른쪽 버튼으로 사용합니다.</p>
+        </div>
+        <div id="teacher-settings-panel">
+            <h2 class="text-xl font-bold text-yellow-300 text-center mb-2">교사용 게임 설정</h2>
+            <p class="text-sm text-gray-300 text-center mb-3">짧은 시간에 즐기려면 시간을 줄이고, 봇과 아이템 수를 늘려 주세요.</p>
+            <div class="teacher-setting-grid">
+                <div class="teacher-setting-field">
+                    <label for="setting-duration">게임 시간(초)</label>
+                    <input id="setting-duration" type="number" min="30" max="1800" step="10">
+                </div>
+                <div class="teacher-setting-field">
+                    <label for="setting-npc-count">봇 수</label>
+                    <input id="setting-npc-count" type="number" min="0" max="12" step="1">
+                </div>
+                <div class="teacher-setting-field">
+                    <label for="setting-max-items">최대 아이템 수</label>
+                    <input id="setting-max-items" type="number" min="3" max="40" step="1">
+                </div>
+                <div class="teacher-setting-field">
+                    <label for="setting-item-spawn">아이템 생성 간격(초)</label>
+                    <input id="setting-item-spawn" type="number" min="1" max="15" step="1">
+                </div>
+            </div>
+            <div id="teacher-settings-status">게임 시작 버튼을 누르면 이 설정으로 시작합니다.</div>
+        </div>
         <input type="text" id="player-name" placeholder="닉네임 입력 (예: 홍길동)" class="px-4 py-3 rounded text-black text-lg w-64 mb-4 text-center focus:outline-none focus:ring-4 focus:ring-yellow-500" maxlength="8">
         <button id="join-btn" class="px-8 py-3 bg-gray-500 text-white rounded text-xl font-bold transition-colors cursor-not-allowed" disabled>서버 접속 중...</button>
     </div>
@@ -210,10 +281,16 @@ body, html {
         <p class="text-xl text-yellow-300">잠시 후 부활합니다... <span id="respawn-timer">3</span></p>
     </div>
 
+    <div id="final-ranking-screen">
+        <h1 class="text-5xl font-bold text-yellow-300 mb-3 text-center">🏆 최종 랭킹</h1>
+        <p class="text-gray-200 text-center">제한 시간이 끝났습니다. 점수가 높은 순서로 표시됩니다.</p>
+        <div id="final-ranking-list"></div>
+    </div>
+
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, deleteDoc, getDocs, getDoc, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // =====================================================================
         // ✅ 강제 1서버 설정
@@ -221,8 +298,7 @@ body, html {
         // __app_id, __firebase_config 같은 외부 환경값을 절대 사용하지 않습니다.
         // =====================================================================
         // minikey74 goedu.kr 계정
-        
-        const firebaseConfig = {
+/*  const firebaseConfig = {
             apiKey: "AIzaSyA0sbjPjdUReOwWdCRGBjKdQ--YmHBF1g8",
             authDomain: "orbit-game-class.firebaseapp.com",
             projectId: "orbit-game-class",
@@ -230,18 +306,71 @@ body, html {
             messagingSenderId: "47770827555",
             appId: "1:47770827555:web:c122c3b23587257ed9aa96"
         };
-        
+  */      
         // newjy72 google 계정
-/*const firebaseConfig = {
+const firebaseConfig = {
   apiKey: "AIzaSyAGVXMNbHUH0dvqwJz0GnInH9o9Oxp9bmQ",
   authDomain: "orbit-game-class-432e0.firebaseapp.com",
   projectId: "orbit-game-class-432e0",
   storageBucket: "orbit-game-class-432e0.firebasestorage.app",
   messagingSenderId: "616620404861",
   appId: "1:616620404861:web:c8d57561cdbe16e0938114"
-};*/      
-        // ✅ 수업 전체가 들어갈 단 하나의 고정 방
+}; 
+        // majorTour01 google 계정
+/*  const firebaseConfig = {
+    apiKey: "AIzaSyAzXnoH7EuIHAeUMKPigyWAT8GzHD2kFFs",
+    authDomain: "orbit-game-class-backup.firebaseapp.com",
+    projectId: "orbit-game-class-backup",
+    storageBucket: "orbit-game-class-backup.firebasestorage.app",
+    messagingSenderId: "961453338471",
+    appId: "1:961453338471:web:868b9c421960e20c5d09c2"
+  };
+*/    
+        //majorTour02 google 계정
+/*  const firebaseConfig = {
+    apiKey: "AIzaSyBllleERedRVQvJodkrZYA0O4omrGTiGBc",
+    authDomain: "orbit-game-02.firebaseapp.com",
+    projectId: "orbit-game-02",
+    storageBucket: "orbit-game-02.firebasestorage.app",
+    messagingSenderId: "1052994155471",
+    appId: "1:1052994155471:web:9dc8aad5ab01c0c29358ba"
+  }; */ 
+	//majorTour03@sungil-i.kr
+/* const firebaseConfig = {
+  apiKey: "AIzaSyBoCHZm6VA24wTi0vJ0qZQsFvhOlvq5edI",
+  authDomain: "vibe0612.firebaseapp.com",
+  projectId: "vibe0612",
+  storageBucket: "vibe0612.firebasestorage.app",
+  messagingSenderId: "554103273518",
+  appId: "1:554103273518:web:3dddc978b1fee9ec8b87bf"
+}; */
+
+	//majorTour04@sungil-i.kr
+/* 
+const firebaseConfig = {
+  apiKey: "AIzaSyBPpWvHCJ7PE1CCpzQTCIyBxSQKlmGcpjE",
+  authDomain: "vibe7777777-9a5d5.firebaseapp.com",
+  projectId: "vibe7777777-9a5d5",
+  storageBucket: "vibe7777777-9a5d5.firebasestorage.app",
+  messagingSenderId: "692492041456",
+  appId: "1:692492041456:web:b964bec11b4143cf6d9635",
+  measurementId: "G-TLW93DL1KB"
+}; */
+
+        // =====================================================================
+        // ✅ 수업용 설정값
+        // 수업 전에는 보통 아래 값만 바꾸면 됩니다.
+        // DEBUG_MODE: true면 서버명/방 ID/uid 일부를 화면에 보여줍니다.
+        // TEACHER_MODE: true면 Firestore 방 초기화 버튼을 교사용으로 보여줍니다.
+        // GAME_DURATION_SECONDS: 게임 진행 시간입니다. 15분 수업 활동이면 900으로 둡니다.
+        // =====================================================================
         const GAME_ROOM_ID = "orbit-classroom-server-001";
+        const DEBUG_MODE = false;
+        const TEACHER_MODE = true;
+        const TARGET_NPC_COUNT = 3;
+        const MAX_ITEMS = 15;
+        const GAME_DURATION_SECONDS = 900;
+        const ITEM_SPAWN_INTERVAL_SECONDS = 5;
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
@@ -251,9 +380,15 @@ body, html {
         // 모든 브라우저가 아래 한 경로만 사용하므로 Edge, Chrome, 다른 PC도 같은 방에서 만납니다.
         const playersRef = collection(db, "rooms", GAME_ROOM_ID, "players");
         const itemsRef = collection(db, "rooms", GAME_ROOM_ID, "items");
+        // 방 문서 직접 쓰기는 Firestore Rules에서 막히는 경우가 많아,
+        // 이미 게임에서 쓰고 있는 items 하위 컬렉션에 설정 전용 문서를 둡니다.
+        const settingsRef = doc(itemsRef, "_room_settings");
 
         function setDebug(message) {
-            document.getElementById("debug-info").innerText = message;
+            const debugEl = document.getElementById("debug-info");
+            if (!debugEl) return;
+            debugEl.style.display = DEBUG_MODE ? 'block' : 'none';
+            if (DEBUG_MODE) debugEl.textContent = message;
         }
 
         setDebug(`서버: ${firebaseConfig.projectId} | 고정방: ${GAME_ROOM_ID} | 인증 대기 중`);
@@ -262,6 +397,7 @@ body, html {
         const BASE_HP = 30;
         const BASE_DAMAGE = 5;
         const MAX_WEAPONS = 12; 
+        const MAX_INVENTORY_ITEMS = 5;
         
         const WEAPONS = [
             { icon: '🍙', name: '김밥' }, { icon: '☕', name: '커피' }, { icon: '🍎', name: '사과' },
@@ -300,7 +436,16 @@ body, html {
         let networkListenersReady = false;
         let inputReady = false;
         let animationStarted = false;
-        const SYNC_INTERVAL = 1500; // PC-휴대폰이 덜 따로 놀도록 1.5초마다 위치 동기화
+        let gameEnded = false;
+        let gameEndAt = 0;
+        let gameTimerId = null;
+        let finalRankedPlayers = null;
+        let activeTargetNpcCount = TARGET_NPC_COUNT;
+        let activeMaxItems = MAX_ITEMS;
+        let activeGameDurationSeconds = GAME_DURATION_SECONDS;
+        let activeItemSpawnIntervalMs = ITEM_SPAWN_INTERVAL_SECONDS * 1000;
+        let activeGameStartedAt = null;
+        const SYNC_INTERVAL = 1000; // PC-휴대폰이 덜 따로 놀도록 1.5초마다 위치 동기화
         const DISCONNECT_TIMEOUT = 45000; // 📱 모바일은 일시적으로 느려질 수 있으므로 45초로 여유 있게 판정
 
         let weaponClashCooldowns = {};
@@ -332,8 +477,36 @@ body, html {
         // 🎵 오디오 시스템 🎵
         let audioCtx = null;
         let bgmInterval = null;
+        let soundEnabled = true;
+
+        function updateSoundButton() {
+            const btn = document.getElementById('sound-toggle');
+            if (!btn) return;
+            btn.textContent = soundEnabled ? '🔊 소리 켜짐' : '🔇 소리 꺼짐';
+        }
+
+        function stopBGM() {
+            if (bgmInterval) {
+                clearInterval(bgmInterval);
+                bgmInterval = null;
+            }
+        }
+
+        function toggleSound() {
+            soundEnabled = !soundEnabled;
+            updateSoundButton();
+
+            if (!soundEnabled) {
+                stopBGM();
+                return;
+            }
+
+            // 브라우저 정책상 소리는 사용자의 클릭 뒤에 시작됩니다.
+            initAudio();
+        }
 
         function initAudio() {
+            if (!soundEnabled) return;
             try {
                 if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -346,7 +519,7 @@ body, html {
             const notes = [146.83, 164.81, 146.83, 174.61]; 
             let noteIdx = 0;
             bgmInterval = setInterval(() => {
-                if (me && me.status === 'alive') {
+                if (soundEnabled && me && me.status === 'alive' && audioCtx) {
                     try {
                         const osc = audioCtx.createOscillator();
                         const gain = audioCtx.createGain();
@@ -372,7 +545,7 @@ body, html {
         const SFX = {
             clash: () => {
                 try {
-                    if(!audioCtx || audioCtx.state !== 'running') return;
+                    if(!soundEnabled || !audioCtx || audioCtx.state !== 'running') return;
                     const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
                     osc.type = 'square';
                     osc.frequency.setValueAtTime(800, audioCtx.currentTime);
@@ -385,7 +558,7 @@ body, html {
             },
             hit: () => {
                 try {
-                    if(!audioCtx || audioCtx.state !== 'running') return;
+                    if(!soundEnabled || !audioCtx || audioCtx.state !== 'running') return;
                     const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
                     osc.type = 'sawtooth';
                     osc.frequency.setValueAtTime(150, audioCtx.currentTime);
@@ -398,7 +571,7 @@ body, html {
             },
             item: () => {
                 try {
-                    if(!audioCtx || audioCtx.state !== 'running') return;
+                    if(!soundEnabled || !audioCtx || audioCtx.state !== 'running') return;
                     const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
                     osc.type = 'sine';
                     osc.frequency.setValueAtTime(440, audioCtx.currentTime);
@@ -412,7 +585,7 @@ body, html {
             },
             evo: () => { 
                 try {
-                    if(!audioCtx || audioCtx.state !== 'running') return;
+                    if(!soundEnabled || !audioCtx || audioCtx.state !== 'running') return;
                     const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
                     osc.type = 'triangle';
                     osc.frequency.setValueAtTime(440, audioCtx.currentTime);
@@ -426,7 +599,7 @@ body, html {
             },
             explosion: () => {
                 try {
-                    if(!audioCtx || audioCtx.state !== 'running') return;
+                    if(!soundEnabled || !audioCtx || audioCtx.state !== 'running') return;
                     const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
                     osc.type = 'sawtooth';
                     osc.frequency.setValueAtTime(100, audioCtx.currentTime);
@@ -438,6 +611,133 @@ body, html {
                 } catch(e) {}
             }
         };
+
+        async function deleteCollectionDocs(collectionRef) {
+            const snapshot = await getDocs(collectionRef);
+            if (snapshot.empty) return 0;
+
+            const batch = writeBatch(db);
+            snapshot.forEach((docSnap) => batch.delete(docSnap.ref));
+            await batch.commit();
+            return snapshot.size;
+        }
+
+        async function resetCurrentRoomForTeacher() {
+            if (!TEACHER_MODE) return;
+            const ok = confirm(`현재 방(${GAME_ROOM_ID})의 플레이어와 아이템 데이터를 모두 삭제할까요?\n수업 중인 학생들이 모두 초기화됩니다.`);
+            if (!ok) return;
+
+            const resetBtn = document.getElementById('teacher-reset-btn');
+            if (resetBtn) {
+                resetBtn.disabled = true;
+                resetBtn.textContent = '초기화 중...';
+            }
+
+            try {
+                // 교사용 초기화: 현재 방의 players/items 하위 컬렉션만 삭제합니다.
+                const playerCount = await deleteCollectionDocs(playersRef);
+                const itemCount = await deleteCollectionDocs(itemsRef);
+                await setDoc(settingsRef, {
+                    type: "_settings",
+                    settings: null,
+                    teacherModeStarted: false,
+                    roomId: GAME_ROOM_ID,
+                    resetAt: Date.now()
+                }, { merge: true });
+                alert(`방 초기화 완료\n플레이어 ${playerCount}개, 아이템 ${itemCount}개를 삭제했습니다.`);
+                location.reload();
+            } catch (e) {
+                console.error('방 초기화 실패:', e);
+                alert('방 초기화에 실패했습니다.\nFirestore 권한과 네트워크 상태를 확인하세요.');
+                if (resetBtn) {
+                    resetBtn.disabled = false;
+                    resetBtn.textContent = '교사용 방 초기화';
+                }
+            }
+        }
+
+        function clampNumber(value, min, max, fallback) {
+            const numberValue = Number(value);
+            if (!Number.isFinite(numberValue)) return fallback;
+            return Math.min(max, Math.max(min, numberValue));
+        }
+
+        function getTeacherSettingsFromInputs() {
+            return {
+                durationSeconds: Math.round(clampNumber(document.getElementById('setting-duration')?.value, 30, 1800, GAME_DURATION_SECONDS)),
+                targetNpcCount: Math.round(clampNumber(document.getElementById('setting-npc-count')?.value, 0, 12, TARGET_NPC_COUNT)),
+                maxItems: Math.round(clampNumber(document.getElementById('setting-max-items')?.value, 3, 40, MAX_ITEMS)),
+                itemSpawnIntervalSeconds: Math.round(clampNumber(document.getElementById('setting-item-spawn')?.value, 1, 15, ITEM_SPAWN_INTERVAL_SECONDS))
+            };
+        }
+
+        function applyRuntimeSettings(settings) {
+            if (!settings) return;
+
+            activeGameDurationSeconds = Math.round(clampNumber(settings.durationSeconds, 30, 1800, GAME_DURATION_SECONDS));
+            activeTargetNpcCount = Math.round(clampNumber(settings.targetNpcCount, 0, 12, TARGET_NPC_COUNT));
+            activeMaxItems = Math.round(clampNumber(settings.maxItems, 3, 40, MAX_ITEMS));
+            activeItemSpawnIntervalMs = Math.round(clampNumber(settings.itemSpawnIntervalSeconds, 1, 15, ITEM_SPAWN_INTERVAL_SECONDS)) * 1000;
+            activeGameStartedAt = Number.isFinite(settings.startedAt) ? settings.startedAt : null;
+        }
+
+        async function saveTeacherSettingsForRoom() {
+            const settings = getTeacherSettingsFromInputs();
+            settings.startedAt = Date.now();
+            settings.updatedAt = Date.now();
+            applyRuntimeSettings(settings);
+
+            await setDoc(settingsRef, {
+                type: "_settings",
+                settings,
+                teacherModeStarted: true,
+                roomId: GAME_ROOM_ID
+            }, { merge: true });
+
+            const status = document.getElementById('teacher-settings-status');
+            if (status) status.textContent = '설정 저장 완료. 이 옵션으로 게임을 시작합니다.';
+        }
+
+        async function loadRoomSettingsForStudent() {
+            try {
+                const roomSnap = await getDoc(settingsRef);
+                if (roomSnap.exists()) {
+                    const data = roomSnap.data();
+                    if (data && data.teacherModeStarted && data.settings) applyRuntimeSettings(data.settings);
+                }
+            } catch (e) {
+                console.warn('방 설정 읽기 실패, 기본값으로 시작합니다.', e);
+            }
+        }
+
+        function setupTeacherSettingsPanel() {
+            const panel = document.getElementById('teacher-settings-panel');
+            if (!panel) return;
+
+            panel.style.display = TEACHER_MODE ? 'block' : 'none';
+            if (!TEACHER_MODE) return;
+
+            document.getElementById('setting-duration').value = GAME_DURATION_SECONDS;
+            document.getElementById('setting-npc-count').value = TARGET_NPC_COUNT;
+            document.getElementById('setting-max-items').value = MAX_ITEMS;
+            document.getElementById('setting-item-spawn').value = ITEM_SPAWN_INTERVAL_SECONDS;
+        }
+
+        function setupClassroomControls() {
+            updateSoundButton();
+            setupTeacherSettingsPanel();
+
+            const soundBtn = document.getElementById('sound-toggle');
+            if (soundBtn) soundBtn.addEventListener('click', toggleSound);
+
+            const resetBtn = document.getElementById('teacher-reset-btn');
+            if (resetBtn) {
+                resetBtn.style.display = TEACHER_MODE ? 'inline-block' : 'none';
+                resetBtn.addEventListener('click', resetCurrentRoomForTeacher);
+            }
+        }
+
+        setupClassroomControls();
 
         // 브라우저를 직접 닫을 때 스스로를 지움
         // 📱 모바일은 beforeunload가 안정적으로 실행되지 않을 수 있어 pagehide도 함께 사용합니다.
@@ -474,7 +774,7 @@ body, html {
             if (user) {
                 myUid = user.uid;
                 const joinBtn = document.getElementById('join-btn');
-                joinBtn.innerText = "게임 시작";
+                joinBtn.innerText = TEACHER_MODE ? "설정 적용 후 게임 시작" : "게임 시작";
                 joinBtn.className = "px-8 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded text-xl font-bold transition-colors cursor-pointer";
                 joinBtn.disabled = false;
                 joinBtn.onclick = joinGame;
@@ -486,6 +786,16 @@ body, html {
         });
         initAuth();
 
+        function cleanNickname(rawName, fallbackName = '학생') {
+            // 닉네임은 최대 8자만 사용합니다. 화면 출력은 반드시 textContent로 처리합니다.
+            const trimmed = String(rawName || '').trim().slice(0, 8);
+            return trimmed || fallbackName;
+        }
+
+        function makeSafeNickname(rawName) {
+            return cleanNickname(rawName, "학생" + Math.floor(Math.random() * 100));
+        }
+
         async function joinGame() {
             if (!myUid || me || gameStarted || pendingServerStart) return; 
             
@@ -493,8 +803,27 @@ body, html {
             joinBtn.innerText = "서버 저장 확인 중...";
             joinBtn.disabled = true;
 
-            const nameInput = document.getElementById('player-name').value.trim();
-            const name = nameInput || "학생" + Math.floor(Math.random() * 100);
+            try {
+                if (TEACHER_MODE) {
+                    joinBtn.innerText = "게임 설정 저장 중...";
+                    await saveTeacherSettingsForRoom();
+                } else {
+                    joinBtn.innerText = "게임 설정 불러오는 중...";
+                    await loadRoomSettingsForStudent();
+                }
+            } catch (e) {
+                console.error("게임 설정 준비 실패:", e);
+                joinBtn.innerText = TEACHER_MODE ? "설정 저장 실패 - 다시 시도" : "설정 불러오기 실패 - 다시 시도";
+                joinBtn.disabled = false;
+                joinBtn.className = "px-8 py-3 bg-red-600 hover:bg-red-500 text-white rounded text-xl font-bold transition-colors cursor-pointer";
+                alert("게임 설정을 준비하지 못했습니다.\nFirestore 권한 또는 네트워크 상태를 확인하세요.");
+                return;
+            }
+
+            joinBtn.innerText = "서버 저장 확인 중...";
+
+            const nameInput = document.getElementById('player-name').value;
+            const name = makeSafeNickname(nameInput);
             const randomWeapon = WEAPONS[Math.floor(Math.random() * WEAPONS.length)];
             const randomColor = COLORS[Math.floor(Math.random() * COLORS.length)];
 
@@ -545,9 +874,12 @@ body, html {
             if (gameStarted || !me) return;
             gameStarted = true;
             pendingServerStart = false;
+            gameEnded = false;
+            finalRankedPlayers = null;
 
             initAudio();
             document.getElementById('login-screen').style.display = 'none';
+            startGameTimer();
 
             if (!inputReady) {
                 setupInput();
@@ -564,6 +896,78 @@ body, html {
             syncToServer();
 
             setDebug(`서버: ${firebaseConfig.projectId} | 방: ${GAME_ROOM_ID} | ${startReason}`);
+        }
+
+        function formatTime(totalSeconds) {
+            const safeSeconds = Math.max(0, Math.ceil(totalSeconds));
+            const minutes = String(Math.floor(safeSeconds / 60)).padStart(2, '0');
+            const seconds = String(safeSeconds % 60).padStart(2, '0');
+            return `${minutes}:${seconds}`;
+        }
+
+        function startGameTimer() {
+            const timerEl = document.getElementById('game-timer');
+            if (!timerEl) return;
+
+            const timerStartAt = activeGameStartedAt || Date.now();
+            gameEndAt = timerStartAt + activeGameDurationSeconds * 1000;
+            timerEl.style.display = 'block';
+
+            if (gameTimerId) clearInterval(gameTimerId);
+            updateGameTimer();
+            gameTimerId = setInterval(updateGameTimer, 250);
+        }
+
+        function updateGameTimer() {
+            const timerEl = document.getElementById('game-timer');
+            if (!timerEl || !gameEndAt) return;
+
+            const remainingSeconds = (gameEndAt - Date.now()) / 1000;
+            timerEl.textContent = formatTime(remainingSeconds);
+
+            if (remainingSeconds <= 10) {
+                timerEl.style.color = '#FC8181';
+                timerEl.style.borderColor = 'rgba(252, 129, 129, 0.75)';
+            }
+
+            if (remainingSeconds <= 0) {
+                endTimedGame();
+            }
+        }
+
+        function endTimedGame() {
+            if (gameEnded) return;
+            gameEnded = true;
+
+            if (gameTimerId) {
+                clearInterval(gameTimerId);
+                gameTimerId = null;
+            }
+
+            if (syncTimerId) {
+                clearInterval(syncTimerId);
+                syncTimerId = null;
+            }
+
+            const timerEl = document.getElementById('game-timer');
+            if (timerEl) timerEl.textContent = '종료';
+
+            // 시간이 끝나면 학생 화면에서 조작과 전투를 멈추고 최종 랭킹만 보여줍니다.
+            mobileMove.x = 0;
+            mobileMove.y = 0;
+            mobileMove.active = false;
+            Object.keys(keys).forEach((key) => { keys[key] = false; });
+            if (me) {
+                me.vx = 0;
+                me.vy = 0;
+                saveMyFullStateNow();
+            }
+
+            stopBGM();
+            finalRankedPlayers = getRankedPlayers(false);
+            updateFinalRanking();
+            document.getElementById('death-screen').style.display = 'none';
+            document.getElementById('final-ranking-screen').style.display = 'flex';
         }
         // ==============================================================
         // ✨ 진화 & 파티클 & 스케일링 핵심 함수 ✨
@@ -728,7 +1132,9 @@ body, html {
             onSnapshot(itemsRef, { includeMetadataChanges: true }, (snapshot) => {
                 const currentItems = {};
                 snapshot.forEach(docSnap => {
-                    currentItems[docSnap.id] = docSnap.data();
+                    const data = docSnap.data();
+                    if (docSnap.id === "_room_settings" || data?.type === "_settings") return;
+                    currentItems[docSnap.id] = data;
                 });
                 gameItems = currentItems;
             }, (error) => {
@@ -738,6 +1144,7 @@ body, html {
         }
 
         function syncToServer() {
+            if (gameEnded) return;
             if (!me || !myUid || me.status !== 'alive') return;
             me.lastActive = Date.now(); 
             me.roomId = GAME_ROOM_ID;
@@ -774,9 +1181,10 @@ body, html {
                 setDebug("Firestore 쓰기 실패: Rules/Auth 설정 확인 필요");
             });
             
-            // ✅ 서버 snapshot이 확인된 방장만 봇/아이템을 관리합니다.
+            // ✅ 서버 snapshot이 확인된 방장만 아이템을 관리합니다.
+            // 봇/NPC는 TEACHER_MODE=true인 교사용 브라우저에서만 생성·관리합니다.
             if (isHost && networkMode === '서버동기화') {
-                manageNPCs();
+                if (TEACHER_MODE) manageNPCs();
                 manageItems();
             }
         }
@@ -834,7 +1242,7 @@ function setupMobileItemButtons() {
 
             const idx = Number(button.dataset.itemIndex);
 
-            if (me && me.status === 'alive') {
+            if (me && me.status === 'alive' && !gameEnded) {
                 useItem(idx);
             }
         });
@@ -904,6 +1312,7 @@ function setupMobileJoystick() {
 }
 
         function useItem(index) {
+            if (gameEnded) return;
             if (index >= me.items.length) return;
             const itemType = me.items[index];
             me.items.splice(index, 1); 
@@ -939,7 +1348,7 @@ function setupMobileJoystick() {
                 const dt = (currentTime - lastTime) / 1000;
                 lastTime = currentTime;
 
-                if (me && me.status === 'alive') {
+                if (me && me.status === 'alive' && !gameEnded) {
                     updateMovement(dt);
                     updateWeaponRotation(dt);
                     checkCollisions();
@@ -954,6 +1363,7 @@ function setupMobileJoystick() {
         }
 
         function updateMovement(dt) {
+            if (gameEnded) return;
             let currentSpeed = 250; 
             if (me.giantUntil > Date.now()) currentSpeed = 400; 
 
@@ -1221,6 +1631,7 @@ function setupMobileJoystick() {
         }
 
         function respawn() {
+            if (gameEnded) return;
             document.getElementById('death-screen').style.display = 'none';
             me.hp = BASE_HP; me.maxHp = BASE_HP; me.vx = 0; me.vy = 0;
             me.weapon.damage = BASE_DAMAGE; me.weapon.count = 1; me.evolution = 0;
@@ -1234,7 +1645,8 @@ function setupMobileJoystick() {
         }
 
         function checkItemPickups() {
-            if (me.items.length >= 5) return; 
+            if (gameEnded) return;
+            if (me.items.length >= MAX_INVENTORY_ITEMS) return; 
             for (const itemId in gameItems) {
                 const item = gameItems[itemId];
                 if (!item) continue;
@@ -1251,7 +1663,7 @@ function setupMobileJoystick() {
         }
 
         function updateInventoryUI() {
-            for (let i = 0; i < 5; i++) {
+            for (let i = 0; i < MAX_INVENTORY_ITEMS; i++) {
                 const slot = document.getElementById(`slot-${i+1}`).querySelector('span');
                 const mobileButton = document.querySelector(`.mobile-item-btn[data-item-index="${i}"]`);
         
@@ -1278,8 +1690,8 @@ function setupMobileJoystick() {
 
         let lastItemSpawn = 0;
         function manageItems() {
-            const maxItems = 15;
-            if (Object.keys(gameItems).length < maxItems && Date.now() - lastItemSpawn > 5000) {
+            if (gameEnded) return;
+            if (Object.keys(gameItems).length < activeMaxItems && Date.now() - lastItemSpawn > activeItemSpawnIntervalMs) {
                 const itemType = ITEM_TYPES[Math.floor(Math.random() * ITEM_TYPES.length)].id;
                 const newId = 'item_' + Date.now() + Math.floor(Math.random()*1000);
                 setDoc(doc(itemsRef, newId), {
@@ -1290,16 +1702,17 @@ function setupMobileJoystick() {
         }
 
         let npcInitialized = false;
-        let targetNpcCount = 3; 
 
         function manageNPCs() {
+            if (gameEnded) return;
+            if (!TEACHER_MODE) return;
             if (!npcInitialized) { npcInitialized = true; }
 
             let npcCount = 0;
             for(let k in otherPlayers) { if(otherPlayers[k].isNpc) npcCount++; }
             
-            if (npcCount < targetNpcCount) {
-                for(let i = npcCount; i < targetNpcCount; i++) {
+            if (npcCount < activeTargetNpcCount) {
+                for(let i = npcCount; i < activeTargetNpcCount; i++) {
                     const npcId = 'npc_' + i;
                     const isBoss = (i === 0); 
                     const rWep = isBoss ? { icon: '😈', name: '악마' } : WEAPONS[Math.floor(Math.random() * WEAPONS.length)];
@@ -1381,7 +1794,7 @@ function setupMobileJoystick() {
                             const item = gameItems[itemId];
                             if (Math.hypot(item.x - newX, item.y - newY) < 30) {
                                 if (!npc.items) npc.items = [];
-                                if (npc.items.length < 5) {
+                                if (npc.items.length < MAX_INVENTORY_ITEMS) {
                                     npc.items.push(item.type);
                                     updates.items = npc.items;
                                     deleteDoc(doc(itemsRef, itemId)).catch(()=>{});
@@ -1486,8 +1899,12 @@ function setupMobileJoystick() {
                 if (me && me.status === 'alive') drawPlayer(me, true);
 
                 ctx.restore();
-                drawMinimap();
+                if (!isMobileLayout()) drawMinimap();
             }
+        }
+
+        function isMobileLayout() {
+            return window.innerWidth <= 768;
         }
 
         function drawMinimap() {
@@ -1536,10 +1953,11 @@ function setupMobileJoystick() {
             ctx.textAlign = "center"; ctx.fillStyle = "white"; 
             ctx.font = p.isBoss ? "bold 16px Arial" : (isMe ? "bold 14px Arial" : "12px Arial");
             
-            let nameDisplay = p.name;
-            if(p.evolution === 1) nameDisplay = "⚡ " + p.name + " ⚡";
-            if(p.evolution === 2) nameDisplay = "🔥 " + p.name + " 🔥";
-            if(p.evolution >= 3) nameDisplay = "👑 " + p.name + " 👑";
+            const safeDisplayName = cleanNickname(p.name);
+            let nameDisplay = safeDisplayName;
+            if(p.evolution === 1) nameDisplay = "⚡ " + safeDisplayName + " ⚡";
+            if(p.evolution === 2) nameDisplay = "🔥 " + safeDisplayName + " 🔥";
+            if(p.evolution >= 3) nameDisplay = "👑 " + safeDisplayName + " 👑";
             if(isGiant) nameDisplay = "🌟 " + nameDisplay + " 🌟";
 
             ctx.fillText(nameDisplay, p.x, p.y - (bodyRadius + 15));
@@ -1582,36 +2000,115 @@ function setupMobileJoystick() {
             ctx.globalAlpha = 1.0; // 투명도 원상복구
         }
 
-        function updateLeaderboard() {
-            const list = document.getElementById('player-list'); list.innerHTML = '';
-            const sortedPlayers = Object.values(otherPlayers).sort((a, b) => {
+        function getRankedPlayers(includeNpc = true) {
+            const players = Object.values(otherPlayers).filter((p) => includeNpc || !p.isNpc);
+            const sortedPlayers = players.sort((a, b) => {
                 if (b.score !== a.score) return b.score - a.score; 
                 return (b.weapon?.damage || 0) - (a.weapon?.damage || 0);
             });
-            if (me) {
+            if (me && (includeNpc || !me.isNpc)) {
                 if (sortedPlayers.findIndex(p => p.uid === myUid) === -1) sortedPlayers.push(me);
                 sortedPlayers.sort((a, b) => {
                     if (b.score !== a.score) return b.score - a.score; 
                     return (b.weapon?.damage || 0) - (a.weapon?.damage || 0);
                 });
             }
+            return sortedPlayers;
+        }
+
+        function updateLeaderboard() {
+            const list = document.getElementById('player-list'); list.innerHTML = '';
+            const sortedPlayers = getRankedPlayers(true);
             sortedPlayers.forEach((p, idx) => {
-                let rankIcon = '';
-                if (idx === 0) rankIcon = '🥇'; else if (idx === 1) rankIcon = '🥈'; else if (idx === 2) rankIcon = '🥉';
-                else rankIcon = `<span class="inline-block w-5 text-center text-gray-500">${idx+1}</span>`;
+                let rankText = '';
+                if (idx === 0) rankText = '🥇'; else if (idx === 1) rankText = '🥈'; else if (idx === 2) rankText = '🥉';
+                else rankText = String(idx + 1);
 
                 // 유령(잠수) 상태 표시 추가
                 const isMeClass = p.uid === myUid ? 'text-green-400 font-bold' : (p.isBoss ? 'text-red-500 font-bold' : (p.isNpc ? 'text-gray-400' : 'text-white'));
-                const statusStr = p.status === 'dead' ? ' <span class="text-red-500 text-xs">[사망]</span>' : (p.isDisconnected ? ' <span class="text-gray-500 text-xs">[잠수]</span>' : '');
+                const statusText = p.status === 'dead' ? '[사망]' : (p.isDisconnected ? '[잠수]' : '');
+                const statusClass = p.status === 'dead' ? 'text-red-500 text-xs' : 'text-gray-500 text-xs';
                 const weaponIcon = p.weapon ? p.weapon.icon : '';
                 const weaponCount = p.weapon ? p.weapon.count : 0;
                 const weaponDmg = p.weapon ? p.weapon.damage : 0;
 
-                // ✅ li 요소를 먼저 만든 뒤 내용을 넣어야 합니다.
+                // 닉네임은 textContent로 출력해 HTML 삽입을 막습니다.
                 const li = document.createElement('li');
-                li.innerHTML = `${rankIcon} <span class="${isMeClass}">${p.name}</span> ${statusStr} 
-                                <div class="text-xs text-gray-400 ml-6">킬: ${p.score} | 무기: ${weaponIcon}(${weaponCount}개/ATK:${weaponDmg})</div>`;
+                const row = document.createElement('div');
+                const rank = document.createElement('span');
+                rank.className = 'inline-block w-5 text-center text-gray-500';
+                rank.textContent = rankText;
+
+                const name = document.createElement('span');
+                name.className = isMeClass;
+                name.textContent = cleanNickname(p.name);
+
+                row.appendChild(rank);
+                row.appendChild(document.createTextNode(' '));
+                row.appendChild(name);
+
+                if (statusText) {
+                    row.appendChild(document.createTextNode(' '));
+                    const status = document.createElement('span');
+                    status.className = statusClass;
+                    status.textContent = statusText;
+                    row.appendChild(status);
+                }
+
+                const detail = document.createElement('div');
+                detail.className = 'text-xs text-gray-400 ml-6';
+                detail.textContent = `킬: ${p.score || 0} | 무기: ${weaponIcon}(${weaponCount}개/ATK:${weaponDmg})`;
+
+                li.appendChild(row);
+                li.appendChild(detail);
                 list.appendChild(li);
+            });
+        }
+
+        function updateFinalRanking() {
+            const list = document.getElementById('final-ranking-list');
+            if (!list) return;
+
+            list.innerHTML = '';
+            const rankedPlayers = finalRankedPlayers || getRankedPlayers(false);
+
+            if (rankedPlayers.length === 0) {
+                const empty = document.createElement('p');
+                empty.className = 'text-center text-gray-300 py-6';
+                empty.textContent = '표시할 학생 기록이 없습니다.';
+                list.appendChild(empty);
+                return;
+            }
+
+            rankedPlayers.forEach((p, idx) => {
+                const row = document.createElement('div');
+                row.className = 'final-rank-row';
+
+                const rank = document.createElement('div');
+                rank.className = 'text-center text-xl';
+                if (idx === 0) rank.textContent = '🥇';
+                else if (idx === 1) rank.textContent = '🥈';
+                else if (idx === 2) rank.textContent = '🥉';
+                else rank.textContent = String(idx + 1);
+
+                const nameBox = document.createElement('div');
+                const name = document.createElement('div');
+                name.className = 'final-rank-name';
+                name.textContent = cleanNickname(p.name);
+                const detail = document.createElement('div');
+                detail.className = 'text-xs text-gray-400';
+                detail.textContent = `무기 공격력 ${p.weapon?.damage || 0} / 무기 ${p.weapon?.count || 0}개`;
+                nameBox.appendChild(name);
+                nameBox.appendChild(detail);
+
+                const score = document.createElement('div');
+                score.className = 'final-rank-score';
+                score.textContent = `${p.score || 0}킬`;
+
+                row.appendChild(rank);
+                row.appendChild(nameBox);
+                row.appendChild(score);
+                list.appendChild(row);
             });
         }
 
